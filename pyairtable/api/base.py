@@ -77,8 +77,24 @@ class Base:
 
     def webhooks(self) -> List[Webhook]:
         """
-        Retrieves all the base's webhooks from the API.
-        See `List webhooks <https://airtable.com/developers/web/api/list-webhooks>`_.
+        Retrieves all the base's webhooks from the API
+        (see: `List webhooks <https://airtable.com/developers/web/api/list-webhooks>`_).
+
+        Usage:
+            >>> base.webhooks()
+            [
+                Webhook(
+                    id='ach00000000000001',
+                    are_notifications_enabled=True,
+                    cursor_for_next_payload=1,
+                    is_hook_enabled=True,
+                    last_successful_notification_time=None,
+                    notification_url="https://example.com",
+                    last_notification_result=None,
+                    expiration_time="2023-07-01T00:00:00.000Z",
+                    specification: WebhookSpecification(...)
+                )
+            ]
         """
         response = self.api.request("GET", self.webhooks_url)
         return [

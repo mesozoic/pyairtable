@@ -36,16 +36,16 @@ Module: pyairtable.formulas
 Module: pyairtable.models
 *******************************
 
-.. autoclass:: pyairtable.models.Comment
+.. automodule:: pyairtable.models
     :members:
-.. autoclass:: pyairtable.models.Collaborator
-    :members:
+
 
 Module: pyairtable.orm
 *******************************
 
 .. autoclass:: pyairtable.orm.Model
     :members:
+
 
 Module: pyairtable.orm.fields
 *******************************
