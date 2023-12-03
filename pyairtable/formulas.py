@@ -1,3 +1,7 @@
+"""
+Utilities for constructing Airtable formulas.
+"""
+
 import re
 from datetime import date, datetime
 from decimal import Decimal
@@ -24,46 +28,23 @@ class Formula:
         return f"{self.__class__.__name__}({self.value!r})"
 
     def __and__(self, other: "Formula") -> "Compound":
-        """
-        >>> lft = Formula('a')
-        >>> rgt = Formula('b')
-        >>> lft & rgt
-        AND(Formula('a'), Formula('b'))
-        """
         return AND(self, other)
 
     def __or__(self, other: "Formula") -> "Compound":
-        """
-        >>> lft = Formula('a')
-        >>> rgt = Formula('b')
-        >>> lft | rgt
-        OR(Formula('a'), Formula('b'))
-        """
         return OR(self, other)
 
     def __xor__(self, other: "Formula") -> "Compound":
-        """
-        >>> lft = Formula('a')
-        >>> rgt = Formula('b')
-        >>> lft ^ rgt
-        OR(AND(Formula('a'), NOT(Formula('b'))),
-           AND(Formula('b'), NOT(Formula('a'))))
-        """
         return OR(AND(self, NOT(other)), AND(other, NOT(self)))
 
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Formula):
+            return False
+        return other.value == self.value
+
     def __invert__(self) -> "Compound":
-        """
-        >>> ~Formula('a')
-        NOT(Formula('a'))
-        """
         return NOT(self)
 
     def flatten(self) -> "Formula":
-        """
-        >>> c = Formula('a')
-        >>> c.flatten() is c
-        True
-        """
         return self
 
 
@@ -79,13 +60,6 @@ class Field(Formula):
 class Comparison(Formula):
     """
     Represents a logical condition that compares two expressions.
-
-    >>> EQ(1, 1)
-    EQ(1, 1)
-    >>> str(EQ(1, 1))
-    '1=1'
-    >>> str(EQ(Formula("Foo"), "Foo"))
-    "Foo='Foo'"
     """
 
     operator: ClassVar[str] = ""
@@ -93,6 +67,11 @@ class Comparison(Formula):
     def __init__(self, lval: Any, rval: Any):
         self.lval = lval
         self.rval = rval
+
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Comparison):
+            return False
+        return (self.lval, self.rval) == (other.lval, other.rval)
 
     def __str__(self) -> str:
         if not self.operator:
@@ -133,16 +112,6 @@ class LTE(Comparison):
 class Compound(Formula):
     """
     Represents a compound logical operator wrapping around one or more conditions.
-
-    >>> Compound('AND', [EQ('foo', 1), EQ('bar', 2)])
-    AND(EQ('foo', 1), EQ('bar', 2))
-
-    >>> Compound('AND', [])
-    Traceback (most recent call last):
-    ValueError: Compound() requires at least one condition
-
-    >>> Compound('OR', (EQ('foo', x) for x in range(3)))
-    OR(EQ('foo', 0), EQ('foo', 1), EQ('foo', 2))
     """
 
     operator: str
@@ -161,6 +130,11 @@ class Compound(Formula):
         self.operator = operator
         self.components = components
 
+    def __eq__(self, other: Any) -> bool:
+        if not isinstance(other, Compound):
+            return False
+        return (self.operator, self.components) == (other.operator, other.components)
+
     def __str__(self) -> str:
         joined_components = ", ".join(str(c) for c in self.components)
         return f"{self.operator}({joined_components})"
@@ -174,38 +148,6 @@ class Compound(Formula):
     def flatten(self, /, memo: Optional[Set[int]] = None) -> "Compound":
         """
         Reduces the depth of nested AND, OR, and NOT statements.
-
-        >>> a = EQ("a", "a")
-        >>> b = EQ("b", "b")
-        >>> c = EQ("c", "c")
-        >>> d = EQ("d", "d")
-        >>> e = EQ("e", "e")
-        >>> c = (a & b) & (c & (d | e))
-        >>> c
-        AND(AND(EQ('a', 'a'),
-                EQ('b', 'b')),
-            AND(EQ('c', 'c'),
-                OR(EQ('d', 'd'), EQ('e', 'e'))))
-        >>> c.flatten()
-        AND(EQ('a', 'a'),
-            EQ('b', 'b'),
-            EQ('c', 'c'),
-            OR(EQ('d', 'd'), EQ('e', 'e')))
-        >>> (~c).flatten()
-        NOT(AND(EQ('a', 'a'),
-                EQ('b', 'b'),
-                EQ('c', 'c'),
-                OR(EQ('d', 'd'), EQ('e', 'e'))))
-        >>> print((~c).flatten())
-        NOT(AND('a'='a', 'b'='b', 'c'='c', OR('d'='d', 'e'='e')))
-
-        In the event of a circular dependency, throws an exception.
-
-        >>> circular = NOT(Formula("x"))
-        >>> circular.components = [circular]
-        >>> circular.flatten()
-        Traceback (most recent call last):
-        pyairtable.formulas.CircularDependency: NOT(NOT(...))
         """
         memo = memo if memo else set()
         memo.add(id(self))
@@ -387,11 +329,6 @@ def to_formula(value: Any) -> str:
 class FunctionCall(Formula):
     """
     Represents a function call in an Airtable formula.
-
-    >>> FunctionCall("IF", 1, True, False)
-    IF(1, True, False)
-    >>> print(_)
-    IF(1, 1, 0)
     """
 
     def __init__(self, name: str, *args: List[Any]):
