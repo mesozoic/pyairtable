@@ -13,7 +13,7 @@ from pyairtable.api.types import (
     UpdateRecordDict,
     WritableFields,
 )
-from pyairtable.formulas import EQ, OR, STR_VALUE
+from pyairtable.formulas import EQ, OR, quoted
 from pyairtable.models import Comment
 from pyairtable.orm.fields import AnyField, Field
 
@@ -351,7 +351,7 @@ class Model:
         if not fetch:
             return [cls.from_id(record_id, fetch=False) for record_id in record_ids]
         formula = OR(
-            *(EQ("RECORD_ID()", STR_VALUE(record_id)) for record_id in record_ids)
+            *(EQ("RECORD_ID()", quoted(record_id)) for record_id in record_ids)
         )
         records = [
             cls.from_record(record) for record in cls.get_table().all(formula=formula)

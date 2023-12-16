@@ -135,7 +135,7 @@ def test_not():
     ],
 )
 def test_to_formula(input, expected):
-    assert F.to_formula(input) == expected
+    assert F.to_formula_str(input) == expected
 
 
 def test_function_call():
@@ -144,11 +144,11 @@ def test_function_call():
     assert str(fc) == "IF(1, 1, 0)"
 
 
-def test_FIELD():
-    assert F.FIELD("First Name") == "{First Name}"
-    assert F.FIELD("Guest's Name") == "{Guest\\'s Name}"
+def test_field_name():
+    assert F.field_name("First Name") == "{First Name}"
+    assert F.field_name("Guest's Name") == "{Guest\\'s Name}"
 
 
-def test_STR_VALUE():
-    assert F.STR_VALUE("John") == "'John'"
-    assert F.STR_VALUE("Guest's Name") == "'Guest\\'s Name'"
+def test_quoted():
+    assert F.quoted("John") == "'John'"
+    assert F.quoted("Guest's Name") == "'Guest\\'s Name'"

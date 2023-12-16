@@ -78,7 +78,7 @@ class Comparison(Formula):
             raise NotImplementedError(
                 f"{self.__class__.__name__}.operator is not defined"
             )
-        lval, rval = (to_formula(v) for v in (self.lval, self.rval))
+        lval, rval = (to_formula_str(v) for v in (self.lval, self.rval))
         return f"{lval}{self.operator}{rval}"
 
     def __repr__(self) -> str:
@@ -289,24 +289,7 @@ def match(dict_values: Fields, *, match_any: bool = False) -> Optional[Formula]:
     return OR(*expressions)
 
 
-def escape_quotes(value: str) -> str:
-    r"""
-    Ensures any quotes are escaped. Already escaped quotes are ignored.
-
-    Args:
-        value: text to be escaped
-
-    Usage:
-        >>> escape_quotes(r"Player's Name")
-        "Player\\'s Name"
-        >>> escape_quotes(r"Player\'s Name")
-        "Player\\'s Name"
-    """
-    escaped_value = re.sub("(?<!\\\\)'", "\\'", value)
-    return escaped_value
-
-
-def to_formula(value: Any) -> str:
+def to_formula_str(value: Any) -> str:
     """
     Converts the given value into a string representation that can be used
     in an Airtable formula expression.
@@ -336,7 +319,7 @@ class FunctionCall(Formula):
         self.args = args
 
     def __str__(self) -> str:
-        joined_args = ", ".join(to_formula(v) for v in self.args)
+        joined_args = ", ".join(to_formula_str(v) for v in self.args)
         return f"{self.name}({joined_args})"
 
     def __repr__(self) -> str:
@@ -708,7 +691,24 @@ def REGEX_REPLACE(string: Any, regex: Any, replacement: Any, /) -> FunctionCall:
 # fmt: on
 
 
-def FIELD(name: str) -> str:
+def escape_quotes(value: str) -> str:
+    r"""
+    Ensures any quotes are escaped. Already escaped quotes are ignored.
+
+    Args:
+        value: text to be escaped
+
+    Usage:
+        >>> escape_quotes(r"Player's Name")
+        "Player\\'s Name"
+        >>> escape_quotes(r"Player\'s Name")
+        "Player\\'s Name"
+    """
+    escaped_value = re.sub("(?<!\\\\)'", "\\'", value)
+    return escaped_value
+
+
+def field_name(name: str) -> str:
     r"""
     Create a reference to a field. Quotes are escaped.
 
@@ -724,7 +724,7 @@ def FIELD(name: str) -> str:
     return "{%s}" % escape_quotes(name)
 
 
-def STR_VALUE(value: str) -> str:
+def quoted(value: str) -> str:
     r"""
     Wrap string in quotes. This is needed when referencing a string inside a formula.
     Quotes are escaped.
