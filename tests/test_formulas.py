@@ -3,6 +3,7 @@ from decimal import Decimal
 from fractions import Fraction
 
 import pytest
+from mock import call
 
 from pyairtable import formulas as F
 from pyairtable.formulas import AND, EQ, GT, GTE, LT, LTE, NE, NOT, OR
@@ -48,14 +49,39 @@ def test_compound():
     cmp = F.Compound("AND", [EQ("foo", 1), EQ("bar", 2)])
     assert repr(cmp) == "AND(EQ('foo', 1), EQ('bar', 2))"
 
-    assert AND(EQ("foo", 1), bar=2) == AND(EQ("foo", 1), EQ(F.Field("bar"), 2))
-    assert OR(EQ("foo", 1), bar=2) == OR(EQ("foo", 1), EQ(F.Field("bar"), 2))
 
+@pytest.mark.parametrize("cmp", [AND, OR])
+@pytest.mark.parametrize(
+    "call_args",
+    [
+        # mix *components and and **fields
+        call(EQ("foo", 1), bar=2),
+        # multiple *components
+        call(EQ("foo", 1), EQ(F.Field("bar"), 2)),
+        # one item in *components that is also an iterable
+        call([EQ("foo", 1), EQ(F.Field("bar"), 2)]),
+        call((EQ("foo", 1), EQ(F.Field("bar"), 2))),
+        lambda: call(iter([EQ("foo", 1), EQ(F.Field("bar"), 2)])),
+        # test that we accept `str` and convert to formulas
+        call(["'foo'=1", "{bar}=2"]),
+    ],
+)
+def test_compound_constructors(cmp, call_args):
+    if type(call_args) != type(call):
+        call_args = call_args()
+    compound = cmp(*call_args.args, **call_args.kwargs)
+    expected = cmp(EQ("foo", 1), EQ(F.Field("bar"), 2))
+    # compare final output expression, since the actual values will not be equal
+    assert str(compound) == str(expected)
+
+
+@pytest.mark.parametrize("cmp", ["AND", "OR", "NOT"])
+def test_compound_without_parameters(cmp):
     with pytest.raises(
         ValueError,
         match=r"Compound\(\) requires at least one component",
     ):
-        F.Compound("AND", [])
+        F.Compound(cmp, [])
 
 
 def test_compound_flatten():

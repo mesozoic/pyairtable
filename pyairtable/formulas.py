@@ -6,7 +6,9 @@ import re
 from datetime import date, datetime
 from decimal import Decimal
 from fractions import Fraction
-from typing import Any, ClassVar, Iterable, Iterator, List, Optional, Set
+from typing import Any, ClassVar, Iterable, Iterator, List, Optional, Set, Union
+
+from typing_extensions import Self as SelfType
 
 from pyairtable.api.types import Fields
 from pyairtable.utils import date_to_iso_str, datetime_to_iso_str
@@ -44,8 +46,14 @@ class Formula:
     def __invert__(self) -> "Compound":
         return NOT(self)
 
-    def flatten(self) -> "Formula":
+    def flatten(self) -> SelfType:
         return self
+
+    @classmethod
+    def coerce(cls, value: Any) -> SelfType:
+        if isinstance(value, cls):
+            return value
+        return cls(str(value))
 
 
 class Field(Formula):
@@ -162,6 +170,16 @@ class Compound(Formula):
 
         return Compound(self.operator, flattened)
 
+    @classmethod
+    def build(cls, operator: str, *components: Any, **fields: Any) -> SelfType:
+        items = list(components)
+        if len(items) == 1 and hasattr(first := items[0], "__iter__"):
+            items = [first] if isinstance(first, str) else list(first)
+        coerced = [Formula.coerce(item) for item in items]
+        if fields:
+            coerced.extend(EQ(Field(k), v) for (k, v) in fields.items())
+        return cls(operator, coerced)
+
 
 class CircularDependency(RecursionError):
     """
@@ -169,30 +187,24 @@ class CircularDependency(RecursionError):
     """
 
 
-def AND(*components: Formula, **fields: Any) -> Compound:
+def AND(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
     """
     Joins one or more logical conditions into an AND compound condition.
 
     >>> AND(EQ("foo", 1), EQ("bar", 2), baz=3)
     AND(EQ('foo', 1), EQ('bar', 2), EQ(Field('baz'), 3))
     """
-    items = list(components)
-    if fields:
-        items.extend(EQ(Field(k), v) for (k, v) in fields.items())
-    return Compound("AND", items)
+    return Compound.build("AND", *components, **fields)
 
 
-def OR(*components: Formula, **fields: Any) -> Compound:
+def OR(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
     """
     Joins one or more logical conditions into an OR compound condition.
 
     >>> OR(EQ("foo", 1), EQ("bar", 2), baz=3)
     OR(EQ('foo', 1), EQ('bar', 2), EQ(Field('baz'), 3))
     """
-    items = list(components)
-    if fields:
-        items.extend(EQ(Field(k), v) for (k, v) in fields.items())
-    return Compound("OR", items)
+    return Compound.build("OR", *components, **fields)
 
 
 def NOT(component: Optional[Formula] = None, /, **fields: Any) -> Compound:
@@ -230,7 +242,7 @@ def NOT(component: Optional[Formula] = None, /, **fields: Any) -> Compound:
         items.append(component)
     if (count := len(items)) != 1:
         raise ValueError(f"NOT() requires exactly one condition; got {count}")
-    return Compound("NOT", items)
+    return Compound.build("NOT", items)
 
 
 def match(dict_values: Fields, *, match_any: bool = False) -> Optional[Formula]:
