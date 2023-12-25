@@ -18,14 +18,10 @@ def test_operators():
     assert str(~(lft & rgt)) == "NOT(AND(a, b))"
     assert repr(lft & rgt) == "AND(Formula('a'), Formula('b'))"
     assert repr(lft | rgt) == "OR(Formula('a'), Formula('b'))"
-    assert repr(lft ^ rgt) == (
-        "OR("
-        "AND(Formula('a'), NOT(Formula('b'))), "
-        "AND(Formula('b'), NOT(Formula('a')))"
-        ")"
-    )
     assert repr(~F.Formula("a")) == "NOT(Formula('a'))"
     assert lft.flatten() is lft
+    assert repr(lft ^ rgt) == "XOR(Formula('a'), Formula('b'))"
+    assert str(lft ^ rgt) == "XOR(a, b)"
 
 
 @pytest.mark.parametrize(

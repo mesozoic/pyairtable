@@ -39,6 +39,7 @@ API: pyairtable.formulas
 
 .. automodule:: pyairtable.formulas
     :members:
+    :member-order: bysource
 
 
 API: pyairtable.models

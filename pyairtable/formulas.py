@@ -1,8 +1,5 @@
-"""
-Utilities for constructing Airtable formulas.
-"""
-
 import re
+from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from fractions import Fraction
@@ -14,14 +11,14 @@ from pyairtable.api.types import Fields
 from pyairtable.utils import date_to_iso_str, datetime_to_iso_str
 
 
+@dataclass
 class Formula:
     """
     Represents an Airtable formula that can be combined with other formulas
     or converted to a string.
     """
 
-    def __init__(self, value: str) -> None:
-        self.value = value
+    value: str
 
     def __str__(self) -> str:
         return self.value
@@ -29,28 +26,28 @@ class Formula:
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.value!r})"
 
-    def __and__(self, other: "Formula") -> "Compound":
+    def __and__(self, other: "Formula") -> "Formula":
         return AND(self, other)
 
-    def __or__(self, other: "Formula") -> "Compound":
+    def __or__(self, other: "Formula") -> "Formula":
         return OR(self, other)
 
-    def __xor__(self, other: "Formula") -> "Compound":
-        return OR(AND(self, NOT(other)), AND(other, NOT(self)))
+    def __xor__(self, other: "Formula") -> "Formula":
+        return XOR(self, other)
 
     def __eq__(self, other: Any) -> bool:
         if not isinstance(other, Formula):
             return False
         return other.value == self.value
 
-    def __invert__(self) -> "Compound":
+    def __invert__(self) -> "Formula":
         return NOT(self)
 
-    def flatten(self) -> SelfType:
+    def flatten(self) -> "Formula":
         return self
 
     @classmethod
-    def coerce(cls, value: Any) -> SelfType:
+    def coerce(cls, value: Any) -> "Formula":
         if isinstance(value, cls):
             return value
         return cls(str(value))
@@ -73,6 +70,10 @@ class Comparison(Formula):
     operator: ClassVar[str] = ""
 
     def __init__(self, lval: Any, rval: Any):
+        if not self.operator:
+            raise NotImplementedError(
+                f"{self.__class__.__name__}.operator is not defined"
+            )
         self.lval = lval
         self.rval = rval
 
@@ -82,10 +83,6 @@ class Comparison(Formula):
         return (self.lval, self.rval) == (other.lval, other.rval)
 
     def __str__(self) -> str:
-        if not self.operator:
-            raise NotImplementedError(
-                f"{self.__class__.__name__}.operator is not defined"
-            )
         lval, rval = (to_formula_str(v) for v in (self.lval, self.rval))
         return f"{lval}{self.operator}{rval}"
 
@@ -189,7 +186,7 @@ class CircularDependency(RecursionError):
 
 def AND(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
     """
-    Joins one or more logical conditions into an AND compound condition.
+    Join one or more logical conditions into an AND compound condition.
 
     >>> AND(EQ("foo", 1), EQ("bar", 2), baz=3)
     AND(EQ('foo', 1), EQ('bar', 2), EQ(Field('baz'), 3))
@@ -199,7 +196,7 @@ def AND(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compou
 
 def OR(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
     """
-    Joins one or more logical conditions into an OR compound condition.
+    Join one or more logical conditions into an OR compound condition.
 
     >>> OR(EQ("foo", 1), EQ("bar", 2), baz=3)
     OR(EQ('foo', 1), EQ('bar', 2), EQ(Field('baz'), 3))
@@ -209,7 +206,7 @@ def OR(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compoun
 
 def NOT(component: Optional[Formula] = None, /, **fields: Any) -> Compound:
     """
-    Wraps one logical condition in a negation compound.
+    Wrap one logical condition in a negation compound.
 
     Can be called either explicitly or with kwargs, but not both.
 
@@ -247,7 +244,7 @@ def NOT(component: Optional[Formula] = None, /, **fields: Any) -> Compound:
 
 def match(dict_values: Fields, *, match_any: bool = False) -> Optional[Formula]:
     r"""
-    Creates one or more ``EQUAL()`` expressions for each provided value,
+    Create one or more ``EQUAL()`` expressions for each provided value,
     treating keys as field names and values as values (not formula expressions).
 
     If more than one assertion is included, the expressions are
@@ -258,7 +255,6 @@ def match(dict_values: Fields, *, match_any: bool = False) -> Optional[Formula]:
 
     If you need more advanced matching you can build similar expressions using lower
     level forumula primitives.
-
 
     Args:
         dict_values: dictionary containing column names and values
@@ -319,6 +315,52 @@ def to_formula_str(value: Any) -> str:
     if isinstance(value, date):
         return str(DATETIME_PARSE(date_to_iso_str(value)))
     raise TypeError(type(value))
+
+
+def escape_quotes(value: str) -> str:
+    r"""
+    Ensure any quotes are escaped. Already escaped quotes are ignored.
+
+    Args:
+        value: text to be escaped
+
+    Usage:
+        >>> escape_quotes(r"Player's Name")
+        "Player\\'s Name"
+        >>> escape_quotes(r"Player\'s Name")
+        "Player\\'s Name"
+    """
+    escaped_value = re.sub("(?<!\\\\)'", "\\'", value)
+    return escaped_value
+
+
+def field_name(name: str) -> str:
+    r"""
+    Create a reference to a field. Quotes are escaped.
+
+    Args:
+        name: field name
+
+    Usage:
+        >>> FIELD("First Name")
+        '{First Name}'
+        >>> FIELD("Guest's Name")
+        "{Guest\\'s Name}"
+    """
+    return "{%s}" % escape_quotes(name)
+
+
+def quoted(value: str) -> str:
+    r"""
+    Wrap string in quotes. This is needed when referencing a string inside a formula.
+    Quotes are escaped.
+
+    >>> STR_VALUE("John")
+    "'John'"
+    >>> STR_VALUE("Guest's Name")
+    "'Guest\\'s Name'"
+    """
+    return "'{}'".format(escape_quotes(str(value)))
 
 
 class FunctionCall(Formula):
@@ -389,361 +431,546 @@ for definition in definitions:
     joined_params = (", " + ", ".join(params)) if params else ""
 
     cog.outl(f"def {name}({joined_signature}) -> FunctionCall:")
+    cog.outl(f"    \"\"\"")
+    cog.outl(f"    Produce a formula that calls ``{name}()``")
+    cog.outl(f"    \"\"\"")
     cog.outl(f"    return FunctionCall({name!r}{joined_params})")
     cog.outl("\n")
 
 [[[out]]]"""
 
 
-def CONCATENATE(text1: Any, /, *texts: Any) -> FunctionCall:
-    return FunctionCall('CONCATENATE', text1, *texts)
-
-
-def ENCODE_URL_COMPONENT(component_string: Any, /) -> FunctionCall:
-    return FunctionCall('ENCODE_URL_COMPONENT', component_string)
-
-
-def FIND(string_to_find: Any, where_to_search: Any, start_from_position: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('FIND', string_to_find, where_to_search, *(v for v in [start_from_position] if v is not None))
-
-
-def LEFT(string: Any, how_many: Any, /) -> FunctionCall:
-    return FunctionCall('LEFT', string, how_many)
-
-
-def LEN(string: Any, /) -> FunctionCall:
-    return FunctionCall('LEN', string)
-
-
-def LOWER(string: Any, /) -> FunctionCall:
-    return FunctionCall('LOWER', string)
-
-
-def MID(string: Any, where_to_start: Any, count: Any, /) -> FunctionCall:
-    return FunctionCall('MID', string, where_to_start, count)
-
-
-def REPLACE(string: Any, start_character: Any, number_of_characters: Any, replacement: Any, /) -> FunctionCall:
-    return FunctionCall('REPLACE', string, start_character, number_of_characters, replacement)
-
-
-def REPT(string: Any, number: Any, /) -> FunctionCall:
-    return FunctionCall('REPT', string, number)
-
-
-def RIGHT(string: Any, how_many: Any, /) -> FunctionCall:
-    return FunctionCall('RIGHT', string, how_many)
-
-
-def SEARCH(string_to_find: Any, where_to_search: Any, start_from_position: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('SEARCH', string_to_find, where_to_search, *(v for v in [start_from_position] if v is not None))
-
-
-def SUBSTITUTE(string: Any, old_text: Any, new_text: Any, index: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('SUBSTITUTE', string, old_text, new_text, *(v for v in [index] if v is not None))
-
-
-def T(value1: Any, /) -> FunctionCall:
-    return FunctionCall('T', value1)
-
-
-def TRIM(string: Any, /) -> FunctionCall:
-    return FunctionCall('TRIM', string)
-
-
-def UPPER(string: Any, /) -> FunctionCall:
-    return FunctionCall('UPPER', string)
-
-
-def BLANK() -> FunctionCall:
-    return FunctionCall('BLANK')
-
-
-def ERROR() -> FunctionCall:
-    return FunctionCall('ERROR')
-
-
-def FALSE() -> FunctionCall:
-    return FunctionCall('FALSE')
-
-
-def IF(expression: Any, value1: Any, value2: Any, /) -> FunctionCall:
-    return FunctionCall('IF', expression, value1, value2)
-
-
-def ISERROR(expr: Any, /) -> FunctionCall:
-    return FunctionCall('ISERROR', expr)
-
-
-def SWITCH(expression: Any, pattern: Any, result: Any, /, *pattern_results: Any) -> FunctionCall:
-    return FunctionCall('SWITCH', expression, pattern, result, *pattern_results)
-
-
-def TRUE() -> FunctionCall:
-    return FunctionCall('TRUE')
-
-
-def XOR(expression1: Any, /, *expressions: Any) -> FunctionCall:
-    return FunctionCall('XOR', expression1, *expressions)
-
-
 def ABS(value: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ABS()``
+    """
     return FunctionCall('ABS', value)
 
 
 def AVERAGE(number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``AVERAGE()``
+    """
     return FunctionCall('AVERAGE', number1, *numbers)
 
 
+def BLANK() -> FunctionCall:
+    """
+    Produce a formula that calls ``BLANK()``
+    """
+    return FunctionCall('BLANK')
+
+
 def CEILING(value: Any, significance: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``CEILING()``
+    """
     return FunctionCall('CEILING', value, *(v for v in [significance] if v is not None))
 
 
+def CONCATENATE(text1: Any, /, *texts: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``CONCATENATE()``
+    """
+    return FunctionCall('CONCATENATE', text1, *texts)
+
+
 def COUNT(number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``COUNT()``
+    """
     return FunctionCall('COUNT', number1, *numbers)
 
 
 def COUNTA(text_or_number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``COUNTA()``
+    """
     return FunctionCall('COUNTA', text_or_number1, *numbers)
 
 
 def COUNTALL(text_or_number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``COUNTALL()``
+    """
     return FunctionCall('COUNTALL', text_or_number1, *numbers)
 
 
-def EVEN(value: Any, /) -> FunctionCall:
-    return FunctionCall('EVEN', value)
-
-
-def EXP(power: Any, /) -> FunctionCall:
-    return FunctionCall('EXP', power)
-
-
-def FLOOR(value: Any, significance: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('FLOOR', value, *(v for v in [significance] if v is not None))
-
-
-def INT(value: Any, /) -> FunctionCall:
-    return FunctionCall('INT', value)
-
-
-def LOG(number: Any, base: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('LOG', number, *(v for v in [base] if v is not None))
-
-
-def MAX(number1: Any, /, *numbers: Any) -> FunctionCall:
-    return FunctionCall('MAX', number1, *numbers)
-
-
-def MIN(number1: Any, /, *numbers: Any) -> FunctionCall:
-    return FunctionCall('MIN', number1, *numbers)
-
-
-def MOD(value1: Any, divisor: Any, /) -> FunctionCall:
-    return FunctionCall('MOD', value1, divisor)
-
-
-def ODD(value: Any, /) -> FunctionCall:
-    return FunctionCall('ODD', value)
-
-
-def POWER(base: Any, power: Any, /) -> FunctionCall:
-    return FunctionCall('POWER', base, power)
-
-
-def ROUND(value: Any, precision: Any, /) -> FunctionCall:
-    return FunctionCall('ROUND', value, precision)
-
-
-def ROUNDDOWN(value: Any, precision: Any, /) -> FunctionCall:
-    return FunctionCall('ROUNDDOWN', value, precision)
-
-
-def ROUNDUP(value: Any, precision: Any, /) -> FunctionCall:
-    return FunctionCall('ROUNDUP', value, precision)
-
-
-def SQRT(value: Any, /) -> FunctionCall:
-    return FunctionCall('SQRT', value)
-
-
-def SUM(number1: Any, /, *numbers: Any) -> FunctionCall:
-    return FunctionCall('SUM', number1, *numbers)
-
-
-def VALUE(text: Any, /) -> FunctionCall:
-    return FunctionCall('VALUE', text)
-
-
 def CREATED_TIME() -> FunctionCall:
+    """
+    Produce a formula that calls ``CREATED_TIME()``
+    """
     return FunctionCall('CREATED_TIME')
 
 
 def DATEADD(date: Any, number: Any, units: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DATEADD()``
+    """
     return FunctionCall('DATEADD', date, number, units)
 
 
 def DATESTR(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DATESTR()``
+    """
     return FunctionCall('DATESTR', date)
 
 
 def DATETIME_DIFF(date1: Any, date2: Any, units: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DATETIME_DIFF()``
+    """
     return FunctionCall('DATETIME_DIFF', date1, date2, units)
 
 
 def DATETIME_FORMAT(date: Any, output_format: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DATETIME_FORMAT()``
+    """
     return FunctionCall('DATETIME_FORMAT', date, *(v for v in [output_format] if v is not None))
 
 
 def DATETIME_PARSE(date: Any, input_format: Optional[Any] = None, locale: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DATETIME_PARSE()``
+    """
     return FunctionCall('DATETIME_PARSE', date, *(v for v in [input_format, locale] if v is not None))
 
 
 def DAY(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``DAY()``
+    """
     return FunctionCall('DAY', date)
 
 
+def ENCODE_URL_COMPONENT(component_string: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ENCODE_URL_COMPONENT()``
+    """
+    return FunctionCall('ENCODE_URL_COMPONENT', component_string)
+
+
+def ERROR() -> FunctionCall:
+    """
+    Produce a formula that calls ``ERROR()``
+    """
+    return FunctionCall('ERROR')
+
+
+def EVEN(value: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``EVEN()``
+    """
+    return FunctionCall('EVEN', value)
+
+
+def EXP(power: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``EXP()``
+    """
+    return FunctionCall('EXP', power)
+
+
+def FALSE() -> FunctionCall:
+    """
+    Produce a formula that calls ``FALSE()``
+    """
+    return FunctionCall('FALSE')
+
+
+def FIND(string_to_find: Any, where_to_search: Any, start_from_position: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``FIND()``
+    """
+    return FunctionCall('FIND', string_to_find, where_to_search, *(v for v in [start_from_position] if v is not None))
+
+
+def FLOOR(value: Any, significance: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``FLOOR()``
+    """
+    return FunctionCall('FLOOR', value, *(v for v in [significance] if v is not None))
+
+
+def FROMNOW(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``FROMNOW()``
+    """
+    return FunctionCall('FROMNOW', date)
+
+
 def HOUR(datetime: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``HOUR()``
+    """
     return FunctionCall('HOUR', datetime)
 
 
+def IF(expression: Any, value1: Any, value2: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``IF()``
+    """
+    return FunctionCall('IF', expression, value1, value2)
+
+
+def INT(value: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``INT()``
+    """
+    return FunctionCall('INT', value)
+
+
 def IS_AFTER(date1: Any, date2: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``IS_AFTER()``
+    """
     return FunctionCall('IS_AFTER', date1, date2)
 
 
 def IS_BEFORE(date1: Any, date2: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``IS_BEFORE()``
+    """
     return FunctionCall('IS_BEFORE', date1, date2)
 
 
 def IS_SAME(date1: Any, date2: Any, unit: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``IS_SAME()``
+    """
     return FunctionCall('IS_SAME', date1, date2, unit)
 
 
+def ISERROR(expr: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ISERROR()``
+    """
+    return FunctionCall('ISERROR', expr)
+
+
 def LAST_MODIFIED_TIME(*fields: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``LAST_MODIFIED_TIME()``
+    """
     return FunctionCall('LAST_MODIFIED_TIME', *fields)
 
 
+def LEFT(string: Any, how_many: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``LEFT()``
+    """
+    return FunctionCall('LEFT', string, how_many)
+
+
+def LEN(string: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``LEN()``
+    """
+    return FunctionCall('LEN', string)
+
+
+def LOG(number: Any, base: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``LOG()``
+    """
+    return FunctionCall('LOG', number, *(v for v in [base] if v is not None))
+
+
+def LOWER(string: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``LOWER()``
+    """
+    return FunctionCall('LOWER', string)
+
+
+def MAX(number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``MAX()``
+    """
+    return FunctionCall('MAX', number1, *numbers)
+
+
+def MID(string: Any, where_to_start: Any, count: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``MID()``
+    """
+    return FunctionCall('MID', string, where_to_start, count)
+
+
+def MIN(number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``MIN()``
+    """
+    return FunctionCall('MIN', number1, *numbers)
+
+
 def MINUTE(datetime: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``MINUTE()``
+    """
     return FunctionCall('MINUTE', datetime)
 
 
+def MOD(value1: Any, divisor: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``MOD()``
+    """
+    return FunctionCall('MOD', value1, divisor)
+
+
 def MONTH(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``MONTH()``
+    """
     return FunctionCall('MONTH', date)
 
 
 def NOW() -> FunctionCall:
+    """
+    Produce a formula that calls ``NOW()``
+    """
     return FunctionCall('NOW')
 
 
+def ODD(value: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ODD()``
+    """
+    return FunctionCall('ODD', value)
+
+
+def POWER(base: Any, power: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``POWER()``
+    """
+    return FunctionCall('POWER', base, power)
+
+
+def RECORD_ID() -> FunctionCall:
+    """
+    Produce a formula that calls ``RECORD_ID()``
+    """
+    return FunctionCall('RECORD_ID')
+
+
+def REGEX_EXTRACT(string: Any, regex: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``REGEX_EXTRACT()``
+    """
+    return FunctionCall('REGEX_EXTRACT', string, regex)
+
+
+def REGEX_MATCH(string: Any, regex: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``REGEX_MATCH()``
+    """
+    return FunctionCall('REGEX_MATCH', string, regex)
+
+
+def REGEX_REPLACE(string: Any, regex: Any, replacement: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``REGEX_REPLACE()``
+    """
+    return FunctionCall('REGEX_REPLACE', string, regex, replacement)
+
+
+def REPLACE(string: Any, start_character: Any, number_of_characters: Any, replacement: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``REPLACE()``
+    """
+    return FunctionCall('REPLACE', string, start_character, number_of_characters, replacement)
+
+
+def REPT(string: Any, number: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``REPT()``
+    """
+    return FunctionCall('REPT', string, number)
+
+
+def RIGHT(string: Any, how_many: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``RIGHT()``
+    """
+    return FunctionCall('RIGHT', string, how_many)
+
+
+def ROUND(value: Any, precision: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ROUND()``
+    """
+    return FunctionCall('ROUND', value, precision)
+
+
+def ROUNDDOWN(value: Any, precision: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ROUNDDOWN()``
+    """
+    return FunctionCall('ROUNDDOWN', value, precision)
+
+
+def ROUNDUP(value: Any, precision: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``ROUNDUP()``
+    """
+    return FunctionCall('ROUNDUP', value, precision)
+
+
+def SEARCH(string_to_find: Any, where_to_search: Any, start_from_position: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SEARCH()``
+    """
+    return FunctionCall('SEARCH', string_to_find, where_to_search, *(v for v in [start_from_position] if v is not None))
+
+
 def SECOND(datetime: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SECOND()``
+    """
     return FunctionCall('SECOND', datetime)
 
 
 def SET_LOCALE(date: Any, locale_modifier: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SET_LOCALE()``
+    """
     return FunctionCall('SET_LOCALE', date, locale_modifier)
 
 
 def SET_TIMEZONE(date: Any, tz_identifier: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SET_TIMEZONE()``
+    """
     return FunctionCall('SET_TIMEZONE', date, tz_identifier)
 
 
+def SQRT(value: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SQRT()``
+    """
+    return FunctionCall('SQRT', value)
+
+
+def SUBSTITUTE(string: Any, old_text: Any, new_text: Any, index: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``SUBSTITUTE()``
+    """
+    return FunctionCall('SUBSTITUTE', string, old_text, new_text, *(v for v in [index] if v is not None))
+
+
+def SUM(number1: Any, /, *numbers: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``SUM()``
+    """
+    return FunctionCall('SUM', number1, *numbers)
+
+
+def SWITCH(expression: Any, pattern: Any, result: Any, /, *pattern_results: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``SWITCH()``
+    """
+    return FunctionCall('SWITCH', expression, pattern, result, *pattern_results)
+
+
+def T(value1: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``T()``
+    """
+    return FunctionCall('T', value1)
+
+
 def TIMESTR(timestamp: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``TIMESTR()``
+    """
     return FunctionCall('TIMESTR', timestamp)
 
 
-def TONOW(date: Any, /) -> FunctionCall:
-    return FunctionCall('TONOW', date)
-
-
-def FROMNOW(date: Any, /) -> FunctionCall:
-    return FunctionCall('FROMNOW', date)
-
-
 def TODAY() -> FunctionCall:
+    """
+    Produce a formula that calls ``TODAY()``
+    """
     return FunctionCall('TODAY')
 
 
+def TONOW(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``TONOW()``
+    """
+    return FunctionCall('TONOW', date)
+
+
+def TRIM(string: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``TRIM()``
+    """
+    return FunctionCall('TRIM', string)
+
+
+def TRUE() -> FunctionCall:
+    """
+    Produce a formula that calls ``TRUE()``
+    """
+    return FunctionCall('TRUE')
+
+
+def UPPER(string: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``UPPER()``
+    """
+    return FunctionCall('UPPER', string)
+
+
+def VALUE(text: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``VALUE()``
+    """
+    return FunctionCall('VALUE', text)
+
+
 def WEEKDAY(date: Any, start_day_of_week: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``WEEKDAY()``
+    """
     return FunctionCall('WEEKDAY', date, *(v for v in [start_day_of_week] if v is not None))
 
 
 def WEEKNUM(date: Any, start_day_of_week: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``WEEKNUM()``
+    """
     return FunctionCall('WEEKNUM', date, *(v for v in [start_day_of_week] if v is not None))
 
 
-def WORKDAY(start_date: Any, num_days: Any, holidays: Optional[Any] = None, /) -> FunctionCall:
-    return FunctionCall('WORKDAY', start_date, num_days, *(v for v in [holidays] if v is not None))
-
-
 def WORKDAY_DIFF(start_date: Any, end_date: Any, holidays: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``WORKDAY_DIFF()``
+    """
     return FunctionCall('WORKDAY_DIFF', start_date, end_date, *(v for v in [holidays] if v is not None))
 
 
+def WORKDAY(start_date: Any, num_days: Any, holidays: Optional[Any] = None, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``WORKDAY()``
+    """
+    return FunctionCall('WORKDAY', start_date, num_days, *(v for v in [holidays] if v is not None))
+
+
+def XOR(expression1: Any, /, *expressions: Any) -> FunctionCall:
+    """
+    Produce a formula that calls ``XOR()``
+    """
+    return FunctionCall('XOR', expression1, *expressions)
+
+
 def YEAR(date: Any, /) -> FunctionCall:
+    """
+    Produce a formula that calls ``YEAR()``
+    """
     return FunctionCall('YEAR', date)
 
 
-def RECORD_ID() -> FunctionCall:
-    return FunctionCall('RECORD_ID')
-
-
-def REGEX_MATCH(string: Any, regex: Any, /) -> FunctionCall:
-    return FunctionCall('REGEX_MATCH', string, regex)
-
-
-def REGEX_EXTRACT(string: Any, regex: Any, /) -> FunctionCall:
-    return FunctionCall('REGEX_EXTRACT', string, regex)
-
-
-def REGEX_REPLACE(string: Any, regex: Any, replacement: Any, /) -> FunctionCall:
-    return FunctionCall('REGEX_REPLACE', string, regex, replacement)
-
-
-# [[[end]]] (checksum: f619d2351cd4e53eb2b3cd0e04f6f433)
+# [[[end]]] (checksum: 3ae0e34ffaa014244da93f9a66d85c93)
 # fmt: on
-
-
-def escape_quotes(value: str) -> str:
-    r"""
-    Ensures any quotes are escaped. Already escaped quotes are ignored.
-
-    Args:
-        value: text to be escaped
-
-    Usage:
-        >>> escape_quotes(r"Player's Name")
-        "Player\\'s Name"
-        >>> escape_quotes(r"Player\'s Name")
-        "Player\\'s Name"
-    """
-    escaped_value = re.sub("(?<!\\\\)'", "\\'", value)
-    return escaped_value
-
-
-def field_name(name: str) -> str:
-    r"""
-    Create a reference to a field. Quotes are escaped.
-
-    Args:
-        name: field name
-
-    Usage:
-        >>> FIELD("First Name")
-        '{First Name}'
-        >>> FIELD("Guest's Name")
-        "{Guest\\'s Name}"
-    """
-    return "{%s}" % escape_quotes(name)
-
-
-def quoted(value: str) -> str:
-    r"""
-    Wrap string in quotes. This is needed when referencing a string inside a formula.
-    Quotes are escaped.
-
-    >>> STR_VALUE("John")
-    "'John'"
-    >>> STR_VALUE("Guest's Name")
-    "'Guest\\'s Name'"
-    """
-    return "'{}'".format(escape_quotes(str(value)))

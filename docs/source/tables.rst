@@ -160,24 +160,10 @@ The :mod:`pyairtable.formulas` module provides functionality to help you compose
   .. code-block:: python
 
       >>> from pyairtable.formulas import match
-      >>> formula = match({"First Name": "John", "Age": 21})
-      >>> formula
-      "AND({First Name}='John',{Age}=21)"
-      >>> table.first(formula=formula)
+      >>> table.first(formula=match({"First Name": "John", "Age": 21}))
       {"id": "recUwKa6lbNSMsetH", "fields": {"First Name": "John", "Age": 21}}
 
-* :func:`~pyairtable.formulas.to_airtable_value` converts a Python value
-  to an expression that can be included in a formula:
-
-  .. code-block:: python
-
-      >>> from pyairtable.formulas import to_airtable_value
-      >>> to_airtable_value(1)
-      1
-      >>> to_airtable_value(datetime.date.today())
-      '2023-06-13'
-
-For more on generating formulas, look over the :mod:`pyairtable.formulas` API reference.
+For more on generating formulas, read the :doc:`formulas` documentation.
 
 
 Retries
