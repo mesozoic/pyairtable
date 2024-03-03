@@ -1,10 +1,13 @@
 import datetime
+from functools import cached_property
+from operator import attrgetter
 from typing import Any, Dict, Iterable, Iterator, List, Literal, Optional, Union
 
 from pyairtable.models._base import AirtableModel, update_forward_refs
 from pyairtable.models.audit import AuditLogResponse
 from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
 from pyairtable.utils import (
+    UrlBuilder,
     cache_unless_forced,
     coerce_iso_str,
     coerce_list_str,
@@ -22,14 +25,18 @@ class Enterprise:
     ['wspmhESAta6clCCwF', ...]
     """
 
+    class _EnterpriseUrls(UrlBuilder):
+        groups = "meta/groups"
+        meta = "meta/enterpriseAccounts/{id}"
+        audit_log = "meta/enterpriseAccounts/{id}/auditLogEvents"
+
+    urls = cached_property(_EnterpriseUrls)
+    url = property(attrgetter("urls.meta"))
+
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
         self.id = workspace_id
         self._info: Optional[EnterpriseInfo] = None
-
-    @property
-    def url(self) -> str:
-        return self.api.build_url("meta/enterpriseAccounts", self.id)
 
     @cache_unless_forced
     def info(self) -> EnterpriseInfo:
@@ -37,7 +44,7 @@ class Enterprise:
         Retrieve basic information about the enterprise, caching the result.
         """
         params = {"include": ["collaborators", "inviteLinks"]}
-        response = self.api.get(self.url, params=params)
+        response = self.api.get(self.urls.meta, params=params)
         return EnterpriseInfo.from_api(response, self.api)
 
     def group(self, group_id: str, collaborations: bool = True) -> UserGroup:
@@ -50,7 +57,7 @@ class Enterprise:
                 from Airtable. This may result in faster responses.
         """
         params = {"include": ["collaborations"] if collaborations else []}
-        url = self.api.build_url(f"meta/groups/{group_id}")
+        url = self.urls.groups + f"/{group_id}"
         payload = self.api.get(url, params=params)
         return UserGroup.parse_obj(payload)
 
@@ -87,7 +94,7 @@ class Enterprise:
             (emails if "@" in value else user_ids).append(value)
 
         response = self.api.get(
-            url=f"{self.url}/users",
+            url=f"{self.urls.meta}/users",
             params={
                 "id": user_ids,
                 "email": emails,
@@ -210,10 +217,9 @@ class Enterprise:
         }
         params = {k: v for (k, v) in params.items() if v}
         offset_field = "next" if sort_asc else "previous"
-        url = self.api.build_url(f"meta/enterpriseAccounts/{self.id}/auditLogEvents")
         iter_requests = self.api.iterate_requests(
             method="GET",
-            url=url,
+            url=self.urls.audit_log,
             params=params,
             offset_field=offset_field,
         )
@@ -244,7 +250,7 @@ class Enterprise:
                 workspaces. If the user is not the sole owner of any workspaces,
                 this is optional and will be ignored if provided.
         """
-        url = f"{self.url}/users/{user_id}/remove"
+        url = f"{self.urls.meta}/users/{user_id}/remove"
         payload: Dict[str, Any] = {"isDryRun": False}
         if replacement:
             payload["replacementOwnerId"] = replacement
@@ -275,7 +281,7 @@ class Enterprise:
                 for (key, value) in users.items()
             ]
         }
-        response = self.api.post(f"{self.url}/users/claim", json=payload)
+        response = self.api.post(f"{self.urls.meta}/users/claim", json=payload)
         return ClaimUsersResponse.from_api(response, self.api, context=self)
 
     def delete_users(self, emails: Iterable[str]) -> "DeleteUsersResponse":
@@ -285,7 +291,9 @@ class Enterprise:
         Args:
             emails: A list or other iterable of email addresses.
         """
-        response = self.api.delete(f"{self.url}/users", params={"email": list(emails)})
+        response = self.api.delete(
+            f"{self.urls.meta}/users", params={"email": list(emails)}
+        )
         return DeleteUsersResponse.from_api(response, self.api, context=self)
 
 

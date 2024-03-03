@@ -1,5 +1,5 @@
 import posixpath
-from functools import partialmethod
+from functools import cached_property, partialmethod
 from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple, TypeVar, Union
 
 import requests
@@ -12,7 +12,7 @@ from pyairtable.api.params import options_to_json_and_params, options_to_params
 from pyairtable.api.types import UserAndScopesDict, assert_typed_dict
 from pyairtable.api.workspace import Workspace
 from pyairtable.models.schema import Bases
-from pyairtable.utils import cache_unless_forced, chunked, enterprise_only
+from pyairtable.utils import UrlBuilder, cache_unless_forced, chunked, enterprise_only
 
 T = TypeVar("T")
 TimeoutTuple: TypeAlias = Tuple[int, int]
@@ -40,6 +40,12 @@ class Api:
 
     # Cached metadata to reduce API calls
     _bases: Optional[Dict[str, "pyairtable.api.base.Base"]] = None
+
+    class _ApiUrls(UrlBuilder):
+        whoami = "meta/whoami"
+        bases = "meta/bases"
+
+    urls = cached_property(_ApiUrls)
 
     def __init__(
         self,
@@ -95,7 +101,7 @@ class Api:
         Return the current user ID and (if connected via OAuth) the list of scopes.
         See `Get user ID & scopes <https://airtable.com/developers/web/api/get-user-id-scopes>`_ for more information.
         """
-        data = self.request("GET", self.build_url("meta/whoami"))
+        data = self.request("GET", self.urls.whoami)
         return assert_typed_dict(UserAndScopesDict, data)
 
     def workspace(self, workspace_id: str) -> Workspace:
@@ -129,7 +135,7 @@ class Api:
         """
         Return a schema object that represents all bases available via the API.
         """
-        url = self.build_url("meta/bases")
+        url = self.urls.bases
         data = {
             "bases": [
                 base_info

@@ -1,7 +1,9 @@
+from functools import cached_property
+from operator import attrgetter
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from pyairtable.models.schema import WorkspaceCollaborators
-from pyairtable.utils import cache_unless_forced, enterprise_only
+from pyairtable.utils import UrlBuilder, cache_unless_forced, enterprise_only
 
 
 class Workspace:
@@ -20,13 +22,15 @@ class Workspace:
 
     _collaborators: Optional[WorkspaceCollaborators] = None
 
+    class _Urls(UrlBuilder):
+        meta = "meta/workspaces/{self.id}"
+
+    urls = cached_property(_Urls)
+    url = property(attrgetter("urls.meta"))
+
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
         self.id = workspace_id
-
-    @property
-    def url(self) -> str:
-        return self.api.build_url("meta/workspaces", self.id)
 
     def create_base(
         self,
@@ -43,7 +47,7 @@ class Workspace:
             tables: A list of ``dict`` objects that conform to Airtable's
                 `Table model <https://airtable.com/developers/web/api/model/table-model>`__.
         """
-        url = self.api.build_url("meta/bases")
+        url = self.api.urls.bases
         payload = {"name": name, "workspaceId": self.id, "tables": list(tables)}
         response = self.api.post(url, json=payload)
         return self.api.base(response["id"], validate=True, force=True)

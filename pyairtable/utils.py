@@ -246,3 +246,39 @@ def coerce_list_str(value: Optional[Union[str, Iterable[str]]]) -> List[str]:
     if isinstance(value, str):
         return [value]
     return list(value)
+
+
+class UrlBuilder:
+    """
+    Utility for defining URL patterns within an Airtable API class.
+
+    This is distinct from the way ``RestfulModel`` generates its URLs,
+    as the "standard" resources (Base, Table, etc.) are not RESTful.
+    """
+
+    _obj: Any
+    _api: "pyairtable.api.api.Api"
+
+    def __init__(self, context: Any = None):
+        self._obj = context
+        self._api = self._find_api(context)
+        self._rebuild_urls()
+
+    @classmethod
+    def _find_api(cls, context: Any) -> "pyairtable.api.api.Api":
+        if isinstance(context, pyairtable.api.api.Api):
+            return context
+        return cast(pyairtable.api.api.Api, context.api)
+
+    def _rebuild_urls(self) -> None:
+        for attr, value in vars(self.__class__).items():
+            if attr.startswith("_"):
+                continue
+            if not isinstance(value, str):
+                continue
+            if "{" in value:
+                value = value.format_map({**vars(self._obj), "self": self._obj})
+            setattr(self, attr, self._api.build_url(value))
+
+
+import pyairtable.api.api  # noqa

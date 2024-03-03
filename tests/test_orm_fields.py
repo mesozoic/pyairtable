@@ -691,7 +691,7 @@ def test_link_field__cycle(requests_mock):
 
     for record in (rec_a, rec_b, rec_c):
         url_re = re.compile(
-            re.escape(Person.get_table().url + "?filterByFormula=")
+            re.escape(Person.get_table().urls.records + "?filterByFormula=")
             + ".*"
             + record["id"]
         )
@@ -731,7 +731,7 @@ def test_link_field__load_many(requests_mock):
     # The mocked URL specifically includes every record ID in our test set,
     # to ensure the library isn't somehow dropping records from its query.
     url_regex = ".*".join(
-        [re.escape(Person.get_table().url + "?filterByFormula="), *friend_ids]
+        [re.escape(Person.get_table().urls.records + "?filterByFormula="), *friend_ids]
     )
     mock_list = requests_mock.get(
         re.compile(url_regex),

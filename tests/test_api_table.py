@@ -22,7 +22,7 @@ def mock_schema(table, requests_mock, sample_json):
     table_schema = sample_json("TableSchema")
     table_schema["id"] = table.name = fake_id("tbl")
     return requests_mock.get(
-        table.base.meta_url("tables") + "?include=visibleFieldIds",
+        table.base.urls.tables + "?include=visibleFieldIds",
         json={"tables": [table_schema]},
     )
 
@@ -42,7 +42,9 @@ def test_constructor_with_schema(base: Base, table_schema: TableSchema):
     assert table.api == base.api
     assert table.base == base
     assert table.name == table_schema.name
-    assert table.url == f"https://api.airtable.com/v0/{base.id}/{table_schema.id}"
+    assert (
+        table.urls.records == f"https://api.airtable.com/v0/{base.id}/{table_schema.id}"
+    )
     assert (
         repr(table)
         == f"<Table base='{base.id}' id='{table_schema.id}' name='{table_schema.name}'>"
@@ -88,7 +90,7 @@ def test_schema(base, requests_mock, sample_json):
     Test that we can load schema from API.
     """
     table = base.table("Apartments")
-    m = requests_mock.get(base.meta_url("tables"), json=sample_json("BaseSchema"))
+    m = requests_mock.get(base.urls.tables, json=sample_json("BaseSchema"))
     assert isinstance(schema := table.schema(), TableSchema)
     assert m.call_count == 1
     assert schema.id == "tbltp8DGLhqbUmjK1"
@@ -99,7 +101,7 @@ def test_id(base, requests_mock, sample_json):
     Test that we load schema from API if we need the ID and don't have it,
     but if we get a name that *looks* like an ID, we trust it.
     """
-    m = requests_mock.get(base.meta_url("tables"), json=sample_json("BaseSchema"))
+    m = requests_mock.get(base.urls.tables, json=sample_json("BaseSchema"))
 
     table = base.table("tbltp8DGLhqbUmjK1")
     assert table.id == "tbltp8DGLhqbUmjK1"
@@ -120,7 +122,7 @@ def test_id(base, requests_mock, sample_json):
 )
 def test_url(api: Api, base_id, table_name, table_url_suffix):
     table = api.table(base_id, table_name)
-    assert table.url == f"https://api.airtable.com/v0/{table_url_suffix}"
+    assert table.urls.records == f"https://api.airtable.com/v0/{table_url_suffix}"
 
 
 def test_chunk(table: Table):
@@ -133,7 +135,7 @@ def test_chunk(table: Table):
 
 def test_record_url(table: Table):
     rv = table.record_url("xxx")
-    assert rv == urljoin(table.url, "xxx")
+    assert rv == urljoin(table.urls.records, "xxx")
 
 
 def test_api_key(table: Table, mock_response_single):
@@ -166,7 +168,7 @@ def test_get(table: Table, mock_response_single):
 def test_first(table: Table, mock_response_single):
     mock_response = {"records": [mock_response_single]}
     with Mocker() as mock:
-        url = Request("get", table.url, params={"maxRecords": 1}).prepare().url
+        url = Request("get", table.urls.records, params={"maxRecords": 1}).prepare().url
         mock.get(
             url,
             status_code=200,
@@ -180,7 +182,7 @@ def test_first(table: Table, mock_response_single):
 def test_first_via_post(table: Table, mock_response_single):
     mock_response = {"records": [mock_response_single]}
     with Mocker() as mock:
-        url = table.url + "/listRecords"
+        url = table.urls.records + "/listRecords"
         formula = f"RECORD_ID() != '{'x' * 17000}'"
         mock_endpoint = mock.post(url, status_code=200, json=mock_response)
         rv = table.first(formula=formula)
@@ -196,7 +198,7 @@ def test_first_via_post(table: Table, mock_response_single):
 def test_first_none(table: Table, mock_response_single):
     mock_response = {"records": []}
     with Mocker() as mock:
-        url = Request("get", table.url, params={"maxRecords": 1}).prepare().url
+        url = Request("get", table.urls.records, params={"maxRecords": 1}).prepare().url
         mock.get(
             url,
             status_code=200,
@@ -209,7 +211,7 @@ def test_first_none(table: Table, mock_response_single):
 def test_all(table: Table, mock_response_list, mock_records):
     with Mocker() as mock:
         mock.get(
-            table.url,
+            table.urls.records,
             status_code=200,
             json=mock_response_list[0],
             complete_qs=True,
@@ -218,7 +220,7 @@ def test_all(table: Table, mock_response_list, mock_records):
             offset = resp.get("offset", None)
             if not offset:
                 continue
-            offset_url = table.url + "?offset={}".format(offset)
+            offset_url = table.urls.records + "?offset={}".format(offset)
             mock.get(
                 offset_url,
                 status_code=200,
@@ -234,7 +236,7 @@ def test_all(table: Table, mock_response_list, mock_records):
 def test_iterate(table: Table, mock_response_list, mock_records):
     with Mocker() as mock:
         mock.get(
-            table.url,
+            table.urls.records,
             status_code=200,
             json=mock_response_list[0],
             complete_qs=True,
@@ -244,7 +246,7 @@ def test_iterate(table: Table, mock_response_list, mock_records):
             if not offset:
                 continue
             params = {"offset": offset}
-            offset_url = Request("get", table.url, params=params).prepare().url
+            offset_url = Request("get", table.urls.records, params=params).prepare().url
             mock.get(
                 offset_url,
                 status_code=200,
@@ -281,7 +283,7 @@ def test_create(table: Table, mock_response_single):
     with Mocker() as mock:
         post_data = mock_response_single["fields"]
         mock.post(
-            table.url,
+            table.urls.records,
             status_code=201,
             json=mock_response_single,
             additional_matcher=match_request_data(post_data),
@@ -295,7 +297,7 @@ def test_batch_create(table: Table, container, mock_records):
     with Mocker() as mock:
         for chunk in _chunk(mock_records, 10):
             mock.post(
-                table.url,
+                table.urls.records,
                 status_code=201,
                 json={"records": chunk},
             )
@@ -311,7 +313,7 @@ def test_update(table: Table, mock_response_single, replace, http_method):
     with Mocker() as mock:
         mock.register_uri(
             http_method,
-            urljoin(table.url, id_),
+            urljoin(table.urls.records, id_),
             status_code=201,
             json=mock_response_single,
             additional_matcher=match_request_data(post_data),
@@ -327,7 +329,7 @@ def test_batch_update(table: Table, container, replace, http_method):
     with Mocker() as mock:
         mock.register_uri(
             http_method,
-            table.url,
+            table.urls.records,
             response_list=[
                 {"json": {"records": chunk}} for chunk in table.api.chunked(records)
             ],
@@ -357,7 +359,7 @@ def test_batch_upsert(table: Table, container, replace, http_method, monkeypatch
     with Mocker() as mock:
         mock.register_uri(
             http_method,
-            table.url,
+            table.urls.records,
             response_list=[{"json": response} for response in responses],
         )
         monkeypatch.setattr(table.api, "MAX_RECORDS_PER_REQUEST", 1)
@@ -386,7 +388,7 @@ def test_delete(table: Table, mock_response_single):
     id_ = mock_response_single["id"]
     expected = {"deleted": True, "id": id_}
     with Mocker() as mock:
-        mock.delete(urljoin(table.url, id_), status_code=201, json=expected)
+        mock.delete(urljoin(table.urls.records, id_), status_code=201, json=expected)
         resp = table.delete(id_)
     assert resp == expected
 
@@ -398,7 +400,9 @@ def test_batch_delete(table: Table, container, mock_records):
         for chunk in _chunk(ids, 10):
             json_response = {"records": [{"deleted": True, "id": id_} for id_ in chunk]}
             url_match = (
-                Request("get", table.url, params={"records[]": chunk}).prepare().url
+                Request("get", table.urls.records, params={"records[]": chunk})
+                .prepare()
+                .url
             )
             mock.delete(
                 url_match,
@@ -416,7 +420,7 @@ def test_create_field(table, mock_schema, requests_mock, sample_json):
     Tests the API for creating a field (but without actually performing the operation).
     """
     mock_create = requests_mock.post(
-        table.meta_url("fields"),
+        table.urls.fields,
         json=sample_json("field_schema/SingleSelectFieldSchema"),
     )
 

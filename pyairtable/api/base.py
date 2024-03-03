@@ -1,4 +1,5 @@
 import warnings
+from functools import cached_property
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 import pyairtable.api.api
@@ -10,7 +11,7 @@ from pyairtable.models.webhook import (
     Webhook,
     WebhookSpecification,
 )
-from pyairtable.utils import cache_unless_forced, enterprise_only
+from pyairtable.utils import UrlBuilder, cache_unless_forced, enterprise_only
 
 
 class Base:
@@ -31,6 +32,19 @@ class Base:
 
     #: The permission level the current user has on the base
     permission_level: Optional[str]
+
+    class _BaseUrls(UrlBuilder):
+        meta = "meta/bases/{id}"
+        interfaces = meta + "/interfaces"
+        shares = meta + "/shares"
+        tables = meta + "/tables"
+        collaborators = meta + "/collaborators"
+        webhooks = "bases/{id}/webhooks"
+
+        def interface(self, interface_id: str) -> str:
+            return f"{self.interfaces}/{interface_id}"
+
+    urls = cached_property(_BaseUrls)
 
     # Cached metadata to reduce API calls
     _collaborators: Optional[BaseCollaborators] = None
@@ -155,22 +169,12 @@ class Base:
                 `Airtable field model <https://airtable.com/developers/web/api/field-model>`__.
             description: The table description. Must be no longer than 20k characters.
         """
-        url = self.meta_url("tables")
+        url = self.urls.tables
         payload = {"name": name, "fields": fields}
         if description:
             payload["description"] = description
         response = self.api.post(url, json=payload)
         return self.table(response["id"], validate=True, force=True)
-
-    @property
-    def url(self) -> str:
-        return self.api.build_url(self.id)
-
-    def meta_url(self, *components: Any) -> str:
-        """
-        Build a URL to a metadata endpoint for this base.
-        """
-        return self.api.build_url("meta/bases", self.id, *components)
 
     @cache_unless_forced
     def schema(self) -> BaseSchema:
@@ -185,14 +189,10 @@ class Base:
             >>> base.schema().table("My Table")
             TableSchema(id="...", name="My Table", ...)
         """
-        url = self.meta_url("tables")
+        url = self.urls.tables
         params = {"include": ["visibleFieldIds"]}
         data = self.api.get(url, params=params)
         return BaseSchema.from_api(data, self.api, context=self)
-
-    @property
-    def webhooks_url(self) -> str:
-        return self.api.build_url("bases", self.id, "webhooks")
 
     def webhooks(self) -> List[Webhook]:
         """
@@ -215,7 +215,7 @@ class Base:
                 )
             ]
         """
-        response = self.api.get(self.webhooks_url)
+        response = self.api.get(self.urls.webhooks)
         return [
             Webhook.from_api(data, self.api, context=self)
             for data in response["webhooks"]
@@ -281,7 +281,7 @@ class Base:
 
         create = CreateWebhook(notification_url=notify_url, specification=spec)
         request = create.dict(by_alias=True, exclude_unset=True)
-        response = self.api.post(self.webhooks_url, json=request)
+        response = self.api.post(self.urls.webhooks, json=request)
         return CreateWebhookResponse.from_api(response, self.api)
 
     @enterprise_only
@@ -291,7 +291,7 @@ class Base:
         Retrieve `base collaborators <https://airtable.com/developers/web/api/get-base-collaborators>`__.
         """
         params = {"include": ["collaborators", "inviteLinks", "interfaces"]}
-        data = self.api.get(self.meta_url(), params=params)
+        data = self.api.get(self.urls.meta, params=params)
         return BaseCollaborators.from_api(data, self.api, context=self)
 
     @enterprise_only
@@ -300,7 +300,7 @@ class Base:
         """
         Retrieve `base shares <https://airtable.com/developers/web/api/list-shares>`__.
         """
-        data = self.api.get(self.meta_url("shares"))
+        data = self.api.get(self.urls.shares)
         shares_obj = BaseShares.from_api(data, self.api, context=self)
         return shares_obj.shares
 
@@ -313,4 +313,4 @@ class Base:
             >>> base = api.base("appMxESAta6clCCwF")
             >>> base.delete()
         """
-        self.api.delete(self.meta_url())
+        self.api.delete(self.urls.meta)

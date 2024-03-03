@@ -94,3 +94,19 @@ def test_converter(func, input, expected):
         return
 
     assert func(input) == expected
+
+
+def test_url_builder(base):
+    class Example(utils.UrlBuilder):
+        static = "one/two/three"
+        with_attr = "id/{id}"
+        with_self_attr = "self.id/{self.id}"
+        with_property = "self.name/{self.name}"
+        _ignored = "ignored"
+
+    urls = Example(base)
+    assert urls.static == "https://api.airtable.com/v0/one/two/three"
+    assert urls.with_attr == f"https://api.airtable.com/v0/id/{base.id}"
+    assert urls.with_self_attr == f"https://api.airtable.com/v0/self.id/{base.id}"
+    assert urls.with_property == f"https://api.airtable.com/v0/self.name/{base.name}"
+    assert urls._ignored == "ignored"

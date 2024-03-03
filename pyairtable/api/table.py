@@ -1,6 +1,8 @@
 import posixpath
 import urllib.parse
 import warnings
+from functools import cached_property
+from operator import attrgetter
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Union, overload
 
 import pyairtable.models
@@ -18,7 +20,7 @@ from pyairtable.api.types import (
 )
 from pyairtable.formulas import Formula, to_formula_str
 from pyairtable.models.schema import FieldSchema, TableSchema, parse_field_schema
-from pyairtable.utils import is_table_id
+from pyairtable.utils import UrlBuilder, is_table_id
 
 
 class Table:
@@ -39,6 +41,13 @@ class Table:
 
     # Cached schema information to reduce API calls
     _schema: Optional[TableSchema] = None
+
+    class _Urls(UrlBuilder):
+        records = "{base.id}/{self.id_for_url}"
+        fields = "meta/bases/{base.id}/tables/{self.id_for_url}/fields"
+
+    urls = cached_property(_Urls)
+    url = property(attrgetter("urls.records"))
 
     @overload
     def __init__(
@@ -153,26 +162,19 @@ class Table:
         return self.schema().id
 
     @property
-    def url(self) -> str:
+    def id_for_url(self) -> str:
         """
         Build the URL for this table.
         """
-        token = self._schema.id if self._schema else self.name
-        return self.api.build_url(self.base.id, urllib.parse.quote(token, safe=""))
-
-    def meta_url(self, *components: str) -> str:
-        """
-        Build a URL to a metadata endpoint for this table.
-        """
-        return self.api.build_url(
-            f"meta/bases/{self.base.id}/tables/{self.id}", *components
+        return urllib.parse.quote(
+            self._schema.id if self._schema else self.name, safe=""
         )
 
     def record_url(self, record_id: RecordId, *components: str) -> str:
         """
         Build the URL for the given record ID, with optional trailing components.
         """
-        return posixpath.join(self.url, record_id, *components)
+        return posixpath.join(self.urls.records, record_id, *components)
 
     @property
     def api(self) -> "pyairtable.api.api.Api":
@@ -232,8 +234,8 @@ class Table:
             options["formula"] = to_formula_str(formula)
         for page in self.api.iterate_requests(
             method="get",
-            url=self.url,
-            fallback=("post", f"{self.url}/listRecords"),
+            url=self.urls.records,
+            fallback=("post", f"{self.urls.records}/listRecords"),
             options=options,
         ):
             yield assert_typed_dicts(RecordDict, page.get("records", []))
@@ -305,7 +307,7 @@ class Table:
             use_field_ids: |kwarg_use_field_ids|
         """
         created = self.api.post(
-            url=self.url,
+            url=self.urls.records,
             json={
                 "fields": fields,
                 "typecast": typecast,
@@ -350,7 +352,7 @@ class Table:
         for chunk in self.api.chunked(records):
             new_records = [{"fields": fields} for fields in chunk]
             response = self.api.post(
-                url=self.url,
+                url=self.urls.records,
                 json={
                     "records": new_records,
                     "typecast": typecast,
@@ -425,7 +427,7 @@ class Table:
             chunk_records = [{"id": x["id"], "fields": x["fields"]} for x in chunk]
             response = self.api.request(
                 method=method,
-                url=self.url,
+                url=self.urls.records,
                 json={
                     "records": chunk_records,
                     "typecast": typecast,
@@ -490,7 +492,7 @@ class Table:
             ]
             response = self.api.request(
                 method=method,
-                url=self.url,
+                url=self.urls.records,
                 json={
                     "records": formatted_records,
                     "typecast": typecast,
@@ -546,7 +548,7 @@ class Table:
         record_ids = list(record_ids)
 
         for chunk in self.api.chunked(record_ids):
-            result = self.api.delete(self.url, params={"records[]": chunk})
+            result = self.api.delete(self.urls.records, params={"records[]": chunk})
             deleted_records += assert_typed_dicts(RecordDeletedDict, result["records"])
 
         return deleted_records
@@ -661,7 +663,7 @@ class Table:
             request["description"] = description
         if options:
             request["options"] = options
-        response = self.api.post(self.meta_url("fields"), json=request)
+        response = self.api.post(self.urls.fields, json=request)
         # This hopscotch ensures that the FieldSchema object we return has an API and a URL,
         # and that developers don't need to reload our schema to be able to access it.
         field_schema = parse_field_schema(response)
