@@ -14,6 +14,14 @@ from pyairtable.utils import (
 )
 
 
+class _EnterpriseUrls(UrlBuilder):
+    groups = "meta/groups"
+    meta = "meta/enterpriseAccounts/{id}"
+    users = meta + "/users"
+    claim_users = meta + "/claim/users"
+    audit_log = meta + "/auditLogEvents"
+
+
 @enterprise_only
 class Enterprise:
     """
@@ -23,13 +31,6 @@ class Enterprise:
     >>> enterprise.info().workspace_ids
     ['wspmhESAta6clCCwF', ...]
     """
-
-    class _EnterpriseUrls(UrlBuilder):
-        groups = "meta/groups"
-        meta = "meta/enterpriseAccounts/{id}"
-        users = meta + "/users"
-        claim_users = meta + "/claim/users"
-        audit_log = meta + "/auditLogEvents"
 
     urls = cached_property(_EnterpriseUrls)
 

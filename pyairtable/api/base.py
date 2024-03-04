@@ -14,6 +14,18 @@ from pyairtable.models.webhook import (
 from pyairtable.utils import UrlBuilder, cache_unless_forced, enterprise_only
 
 
+class _BaseUrls(UrlBuilder):
+    meta = "meta/bases/{id}"
+    interfaces = meta + "/interfaces"
+    shares = meta + "/shares"
+    tables = meta + "/tables"
+    collaborators = meta + "/collaborators"
+    webhooks = "bases/{id}/webhooks"
+
+    def interface(self, interface_id: str) -> str:
+        return f"{self.interfaces}/{interface_id}"
+
+
 class Base:
     """
     Represents an Airtable base.
@@ -32,17 +44,6 @@ class Base:
 
     #: The permission level the current user has on the base
     permission_level: Optional[str]
-
-    class _BaseUrls(UrlBuilder):
-        meta = "meta/bases/{id}"
-        interfaces = meta + "/interfaces"
-        shares = meta + "/shares"
-        tables = meta + "/tables"
-        collaborators = meta + "/collaborators"
-        webhooks = "bases/{id}/webhooks"
-
-        def interface(self, interface_id: str) -> str:
-            return f"{self.interfaces}/{interface_id}"
 
     urls = cached_property(_BaseUrls)
 

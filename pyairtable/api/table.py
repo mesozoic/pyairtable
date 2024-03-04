@@ -22,6 +22,12 @@ from pyairtable.models.schema import FieldSchema, TableSchema, parse_field_schem
 from pyairtable.utils import UrlBuilder, is_table_id
 
 
+class _TableUrls(UrlBuilder):
+    records = "{base.id}/{self._url_id}"
+    records_post = records + "/listRecords"
+    fields = "meta/bases/{base.id}/tables/{self._url_id}/fields"
+
+
 class Table:
     """
     Represents an Airtable table.
@@ -41,12 +47,7 @@ class Table:
     # Cached schema information to reduce API calls
     _schema: Optional[TableSchema] = None
 
-    class _Urls(UrlBuilder):
-        records = "{base.id}/{self._url_id}"
-        records_post = records + "/listRecords"
-        fields = "meta/bases/{base.id}/tables/{self._url_id}/fields"
-
-    urls = cached_property(_Urls)
+    urls = cached_property(_TableUrls)
 
     @overload
     def __init__(

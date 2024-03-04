@@ -5,6 +5,12 @@ from pyairtable.models.schema import WorkspaceCollaborators
 from pyairtable.utils import UrlBuilder, cache_unless_forced, enterprise_only
 
 
+class _WorkspaceUrls(UrlBuilder):
+    meta = "meta/workspaces/{self.id}"
+    move_base = meta + "/moveBase"
+    collaborators = meta + "/collaborators"
+
+
 class Workspace:
     """
     Represents an Airtable workspace, which contains a number of bases
@@ -21,12 +27,7 @@ class Workspace:
 
     _collaborators: Optional[WorkspaceCollaborators] = None
 
-    class _Urls(UrlBuilder):
-        meta = "meta/workspaces/{self.id}"
-        move_base = meta + "/moveBase"
-        collaborators = meta + "/collaborators"
-
-    urls = cached_property(_Urls)
+    urls = cached_property(_WorkspaceUrls)
 
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
