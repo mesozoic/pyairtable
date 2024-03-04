@@ -1,6 +1,5 @@
 import datetime
 from functools import cached_property
-from operator import attrgetter
 from typing import Any, Dict, Iterable, Iterator, List, Literal, Optional, Union
 
 from pyairtable.models._base import AirtableModel, update_forward_refs
@@ -28,10 +27,11 @@ class Enterprise:
     class _EnterpriseUrls(UrlBuilder):
         groups = "meta/groups"
         meta = "meta/enterpriseAccounts/{id}"
-        audit_log = "meta/enterpriseAccounts/{id}/auditLogEvents"
+        users = meta + "/users"
+        claim_users = meta + "/claim/users"
+        audit_log = meta + "/auditLogEvents"
 
     urls = cached_property(_EnterpriseUrls)
-    url = property(attrgetter("urls.meta"))
 
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
@@ -57,7 +57,7 @@ class Enterprise:
                 from Airtable. This may result in faster responses.
         """
         params = {"include": ["collaborations"] if collaborations else []}
-        url = self.urls.groups + f"/{group_id}"
+        url = f"{self.urls.groups}/{group_id}"
         payload = self.api.get(url, params=params)
         return UserGroup.parse_obj(payload)
 
@@ -94,7 +94,7 @@ class Enterprise:
             (emails if "@" in value else user_ids).append(value)
 
         response = self.api.get(
-            url=f"{self.urls.meta}/users",
+            url=self.urls.users,
             params={
                 "id": user_ids,
                 "email": emails,
@@ -250,7 +250,7 @@ class Enterprise:
                 workspaces. If the user is not the sole owner of any workspaces,
                 this is optional and will be ignored if provided.
         """
-        url = f"{self.urls.meta}/users/{user_id}/remove"
+        url = f"{self.urls.users}/{user_id}/remove"
         payload: Dict[str, Any] = {"isDryRun": False}
         if replacement:
             payload["replacementOwnerId"] = replacement
@@ -281,7 +281,7 @@ class Enterprise:
                 for (key, value) in users.items()
             ]
         }
-        response = self.api.post(f"{self.urls.meta}/users/claim", json=payload)
+        response = self.api.post(self.urls.claim_users, json=payload)
         return ClaimUsersResponse.from_api(response, self.api, context=self)
 
     def delete_users(self, emails: Iterable[str]) -> "DeleteUsersResponse":
@@ -291,9 +291,7 @@ class Enterprise:
         Args:
             emails: A list or other iterable of email addresses.
         """
-        response = self.api.delete(
-            f"{self.urls.meta}/users", params={"email": list(emails)}
-        )
+        response = self.api.delete(self.urls.users, params={"email": list(emails)})
         return DeleteUsersResponse.from_api(response, self.api, context=self)
 
 

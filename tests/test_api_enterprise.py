@@ -29,19 +29,19 @@ def enterprise_mocks(enterprise, requests_mock, sample_json):
     m.json_group = sample_json("UserGroup")
     m.user_id = m.json_user["id"]
     m.group_id = m.json_group["id"]
-    m.get_info = requests_mock.get(enterprise.url, json=sample_json("EnterpriseInfo"))
-    m.get_user = requests_mock.get(
-        f"{enterprise.url}/users/{m.user_id}", json=m.json_user
+    m.get_info = requests_mock.get(
+        enterprise.urls.meta, json=sample_json("EnterpriseInfo")
     )
-    m.get_users = requests_mock.get(f"{enterprise.url}/users", json=m.json_users)
+    m.get_user = requests_mock.get(
+        f"{enterprise.urls.users}/{m.user_id}", json=m.json_user
+    )
+    m.get_users = requests_mock.get(enterprise.urls.users, json=m.json_users)
     m.get_group = requests_mock.get(
         enterprise.api.build_url(f"meta/groups/{m.json_group['id']}"),
         json=m.json_group,
     )
     m.get_audit_log = requests_mock.get(
-        enterprise.api.build_url(
-            f"meta/enterpriseAccounts/{enterprise.id}/auditLogEvents"
-        ),
+        enterprise.urls.audit_log,
         response_list=[
             {
                 "json": {
@@ -55,11 +55,11 @@ def enterprise_mocks(enterprise, requests_mock, sample_json):
         ],
     )
     m.remove_user = requests_mock.post(
-        enterprise.url + f"/users/{m.user_id}/remove",
+        f"{enterprise.urls.users}/{m.user_id}/remove",
         json=sample_json("UserRemoved"),
     )
     m.claim_users = requests_mock.post(
-        enterprise.url + "/users/claim",
+        enterprise.urls.claim_users,
         json={"errors": []},
     )
     return m
@@ -250,7 +250,7 @@ def test_remove_user(enterprise, enterprise_mocks, kwargs, expected):
 @pytest.fixture
 def user_info(enterprise, enterprise_mocks):
     user_info = enterprise.user(enterprise_mocks.user_id)
-    assert user_info._url == f"{enterprise.url}/users/{user_info.id}"
+    assert user_info._url == f"{enterprise.urls.users}/{user_info.id}"
     return user_info
 
 
@@ -303,7 +303,7 @@ def test_delete_users(enterprise, requests_mock):
         ],
     }
     emails = [f"foo{n}@bar.com" for n in range(5)]
-    m = requests_mock.delete(enterprise.url + "/users", json=response)
+    m = requests_mock.delete(enterprise.urls.users, json=response)
     parsed = enterprise.delete_users(emails)
     assert m.call_count == 1
     assert m.last_request.qs == {"email": emails}
