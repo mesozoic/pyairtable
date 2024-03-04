@@ -9,12 +9,39 @@ Migration Guide
 Migrating from 2.x to 3.0
 ============================
 
-In this release we've made breaking changes to the :mod:`pyairtable.formulas` module.
-In general, most functions and methods in this module will return instances of
+The 3.0 release introduces a few breaking changes to the API. These are summarized below.
+
+Refactored URL builders
+----------------------------
+
+The following properties and methods for constructing URLs have been renamed or removed:
+
+.. list-table::
+    :header-rows: 1
+
+    * - Building a URL in 2.x
+      - Building a URL in 3.0
+    * - ``table.url``
+      - ``table.urls.records``
+    * - ``table.meta_url("one", "two")``
+      - ``f"{table.urls.meta}/one/two"``
+    * - ``base.url``
+      - (removed; was invalid)
+    * - ``base.meta_url("one", "two")``
+      - ``f"{base.urls.meta}/one/two"``
+    * - ``base.webhooks_url()``
+      - ``base.urls.webhooks``
+    * - ``enterprise.url``
+      - ``enterprise.urls.meta``
+    * - ``workspace.url``
+      - ``workspace.urls.meta``
+
+Redesigned formulas module
+----------------------------
+
+Functions and methods in the :mod:`pyairtable.formulas` module now return instances of
 :class:`~pyairtable.formulas.Formula`, which can be chained, combined, and eventually
 passed to the ``formula=`` keyword argument to methods like :meth:`~pyairtable.Table.all`.
-
-The full list of breaking changes is below:
 
 .. list-table::
     :header-rows: 1
