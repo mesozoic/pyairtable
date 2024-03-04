@@ -22,7 +22,7 @@ def mock_base_metadata(base, sample_json, requests_mock):
 @pytest.fixture
 def mock_workspace_metadata(workspace, sample_json, requests_mock):
     workspace_json = sample_json("WorkspaceCollaborators")
-    requests_mock.get(workspace.url, json=workspace_json)
+    requests_mock.get(workspace.urls.meta, json=workspace_json)
 
 
 @pytest.mark.parametrize(
@@ -144,8 +144,8 @@ def test_base_collaborators__add(
     Test that we can call base.collaborators().add_{user,group}
     to grant access to the base.
     """
-    m = requests_mock.post(base.urls.collaborators, body="")
     method = getattr(base.collaborators(), f"add_{kind}")
+    m = requests_mock.post(base.urls.collaborators, body="")
     method(id, "read")
     assert m.call_count == 1
     assert m.last_request.json() == {
@@ -167,9 +167,9 @@ def test_workspace_collaborators__add(api, kind, id, requests_mock, sample_json)
     """
     workspace_json = sample_json("WorkspaceCollaborators")
     workspace = api.workspace(workspace_json["id"])
-    requests_mock.get(workspace.url, json=workspace_json)
-    m = requests_mock.post(f"{workspace.url}/collaborators", body="")
+    requests_mock.get(workspace.urls.meta, json=workspace_json)
     method = getattr(workspace.collaborators(), f"add_{kind}")
+    m = requests_mock.post(workspace.urls.collaborators, body="")
     method(id, "read")
     assert m.call_count == 1
     assert m.last_request.json() == {

@@ -1,5 +1,4 @@
 from functools import cached_property
-from operator import attrgetter
 from typing import Any, Dict, List, Optional, Sequence, Union
 
 from pyairtable.models.schema import WorkspaceCollaborators
@@ -24,9 +23,10 @@ class Workspace:
 
     class _Urls(UrlBuilder):
         meta = "meta/workspaces/{self.id}"
+        move_base = meta + "/moveBase"
+        collaborators = meta + "/collaborators"
 
     urls = cached_property(_Urls)
-    url = property(attrgetter("urls.meta"))
 
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
@@ -64,7 +64,7 @@ class Workspace:
         See https://airtable.com/developers/web/api/get-workspace-collaborators
         """
         params = {"include": ["collaborators", "inviteLinks"]}
-        payload = self.api.get(self.url, params=params)
+        payload = self.api.get(self.urls.meta, params=params)
         return WorkspaceCollaborators.from_api(payload, self.api, context=self)
 
     @enterprise_only
@@ -93,7 +93,7 @@ class Workspace:
             >>> ws = api.workspace("wspmhESAta6clCCwF")
             >>> ws.delete()
         """
-        self.api.delete(self.url)
+        self.api.delete(self.urls.meta)
 
     @enterprise_only
     def move_base(
@@ -117,8 +117,7 @@ class Workspace:
         payload: Dict[str, Any] = {"baseId": base_id, "targetWorkspaceId": target_id}
         if index is not None:
             payload["targetIndex"] = index
-        url = self.url + "/moveBase"
-        self.api.post(url, json=payload)
+        self.api.post(self.urls.move_base, json=payload)
 
 
 # These are at the bottom of the module to avoid circular imports
