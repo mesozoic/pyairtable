@@ -2,7 +2,6 @@ import posixpath
 import urllib.parse
 import warnings
 from functools import cached_property
-from operator import attrgetter
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Union, overload
 
 import pyairtable.models
@@ -43,11 +42,11 @@ class Table:
     _schema: Optional[TableSchema] = None
 
     class _Urls(UrlBuilder):
-        records = "{base.id}/{self.id_for_url}"
-        fields = "meta/bases/{base.id}/tables/{self.id_for_url}/fields"
+        records = "{base.id}/{self._url_id}"
+        records_post = records + "/listRecords"
+        fields = "meta/bases/{base.id}/tables/{self._url_id}/fields"
 
     urls = cached_property(_Urls)
-    url = property(attrgetter("urls.records"))
 
     @overload
     def __init__(
@@ -162,9 +161,9 @@ class Table:
         return self.schema().id
 
     @property
-    def id_for_url(self) -> str:
+    def _url_id(self) -> str:
         """
-        Build the URL for this table.
+        The URL component used to represent this table.
         """
         return urllib.parse.quote(
             self._schema.id if self._schema else self.name, safe=""
@@ -235,7 +234,7 @@ class Table:
         for page in self.api.iterate_requests(
             method="get",
             url=self.urls.records,
-            fallback=("post", f"{self.urls.records}/listRecords"),
+            fallback=("post", self.urls.records_post),
             options=options,
         ):
             yield assert_typed_dicts(RecordDict, page.get("records", []))
