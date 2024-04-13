@@ -271,7 +271,7 @@ def test_iterate__formula_conversion(table):
 
     m.assert_called_once_with(
         method="get",
-        url=table.url,
+        url=table.urls.records,
         fallback=mock.ANY,
         options={
             "formula": "AND({Name}='Alice')",

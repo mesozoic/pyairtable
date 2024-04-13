@@ -110,3 +110,16 @@ def test_url_builder(base):
     assert urls.with_self_attr == f"https://api.airtable.com/v0/self.id/{base.id}"
     assert urls.with_property == f"https://api.airtable.com/v0/self.name/{base.name}"
     assert urls._ignored == "ignored"
+
+
+def test_url():
+    v = utils.Url("https://example.com")
+    assert v == "https://example.com"
+    assert v / "foo/bar" / "baz" == "https://example.com/foo/bar/baz"
+    assert v / "foo" & {"a": 1, "b": [2, 3]} == "https://example.com/foo?a=1&b=2&b=3"
+    assert v // [1, 2, "a", "b"] == "https://example.com/1/2/a/b"
+    assert v.add_qs(a=1, b=[2, 3, 4]) == "https://example.com?a=1&b=2&b=3&b=4"
+
+    v2 = v & {"a": 1}
+    with pytest.raises(ValueError):
+        v2 / "foo"  # cannot add path segments after params

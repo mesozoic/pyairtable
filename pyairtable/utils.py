@@ -1,11 +1,13 @@
 import inspect
 import re
 import textwrap
+import urllib.parse
 from datetime import date, datetime
 from functools import partial, wraps
 from typing import (
     Any,
     Callable,
+    Dict,
     Generic,
     Iterable,
     Iterator,
@@ -246,6 +248,67 @@ def coerce_list_str(value: Optional[Union[str, Iterable[str]]]) -> List[str]:
     if isinstance(value, str):
         return [value]
     return list(value)
+
+
+class Url(str):
+    """
+    Silly wrapper around ``str`` that adds Path-like syntax for extending
+    URL components and adding query params.
+
+    >>> u = Url('http://example.com')
+    >>> u
+    'http://example.com'
+    >>> u / 'foo' & {'a': 1, 'b': [2, 3, 4]}
+    'http://example.com/foo?a=1&b=2&b=3&b=4'
+    >>> u // [1, 2, 3, 4]
+    'http://example.com/1/2/3/4'
+    >>> u.add_qs(a=1, b=[2,3,4])
+    'http://example.com?a=1&b=2&b=3&b=4'
+    """
+
+    def parse(self) -> urllib.parse.ParseResult:
+        """
+        Shortcut for `urllib.parse.urlparse <https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlparse>`_.
+        """
+        return urllib.parse.urlparse(self)
+
+    def __truediv__(self, other: Any) -> "Url":
+        parsed = self.parse()
+        if parsed.query:
+            raise ValueError("cannot add path segments after params")
+        if (path := parsed.path) and not path.endswith("/"):
+            path = path + "/"
+        new = parsed._replace(path=f"{path}{other}")
+        return Url(urllib.parse.urlunparse(new))
+
+    def __floordiv__(self, others: Iterable[str]) -> "Url":
+        parsed = self.parse()
+        if parsed.query:
+            raise ValueError("cannot add path segments after params")
+        parts = [str(other) for other in others]
+        if parsed.path:
+            parts.insert(0, parsed.path)
+        new = parsed._replace(path="/".join(parts))
+        return Url(urllib.parse.urlunparse(new))
+
+    def __and__(self, params: Dict[str, Any]) -> "Url":
+        return self.add_qs(params)
+
+    def add_qs(
+        self,
+        params: Optional[Dict[str, Any]] = None,
+        **other_params: Any,
+    ) -> "Url":
+        """
+        Build a copy of this URL with additional query parameters.
+        """
+        params = {} if params is None else params
+        params.update(other_params)
+        parsed = self.parse()
+        qs = urllib.parse.parse_qs(parsed.query)
+        qs.update(params)
+        new = parsed._replace(query=urllib.parse.urlencode(qs, doseq=True))
+        return Url(urllib.parse.urlunparse(new))
 
 
 class UrlBuilder:

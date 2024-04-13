@@ -14,7 +14,9 @@ The 3.0 release introduces a few breaking changes to the API. These are summariz
 Refactored URL builders
 ----------------------------
 
-The following properties and methods for constructing URLs have been renamed or removed:
+The following properties and methods for constructing URLs have been renamed or removed.
+These methods now return instances of :class:`~pyairtable.utils.Url`, which is a
+subclass of ``str`` that has some overloaded operators. See docs for more details.
 
 .. list-table::
     :header-rows: 1
@@ -24,11 +26,13 @@ The following properties and methods for constructing URLs have been renamed or 
     * - ``table.url``
       - ``table.urls.records``
     * - ``table.meta_url("one", "two")``
-      - ``f"{table.urls.meta}/one/two"``
+      - ``table.urls.meta / "one" / "two"``
+    * - ``table.meta_url(*parts)``
+      - ``table.urls.meta // parts``
     * - ``base.url``
       - (removed; was invalid)
     * - ``base.meta_url("one", "two")``
-      - ``f"{base.urls.meta}/one/two"``
+      - ``base.urls.meta / "one" / "two"``
     * - ``base.webhooks_url()``
       - ``base.urls.webhooks``
     * - ``enterprise.url``
