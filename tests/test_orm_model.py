@@ -178,8 +178,8 @@ def test_from_ids(mock_api):
     contacts = FakeModel.from_ids(fake_ids)
     mock_api.assert_called_once_with(
         method="get",
-        url=FakeModel.get_table().urls.records,
-        fallback=("post", FakeModel.get_table().urls.records_post),
+        url=FakeModel.meta.table.urls.records,
+        fallback=("post", FakeModel.meta.table.urls.records_post),
         options={
             "formula": "OR(%s)" % ", ".join(f"RECORD_ID()='{id}'" for id in fake_ids)
         },
@@ -248,7 +248,7 @@ def test_get_fields_by_id(fake_records_by_id):
     """
     with Mocker() as mock:
         mock.get(
-            FakeModelByIds.get_table().urls.records.add_qs(
+            FakeModelByIds.meta.table.urls.records.add_qs(
                 returnFieldsByFieldId=1,
                 cellFormat="json",
             ),
@@ -289,7 +289,7 @@ def test_dynamic_model_meta():
     f = Fake()
     Fake.Meta.table_name.assert_not_called()
 
-    assert f._get_meta("api_key") == data["api_key"]
-    assert f._get_meta("base_id") == data["base_id"]
-    assert f._get_meta("table_name") == data["table_name"]
+    assert f.meta.get("api_key") == data["api_key"]
+    assert f.meta.get("base_id") == data["base_id"]
+    assert f.meta.get("table_name") == data["table_name"]
     Fake.Meta.table_name.assert_called_once()

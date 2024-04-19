@@ -46,6 +46,7 @@ Redesigned formulas module
 Functions and methods in the :mod:`pyairtable.formulas` module now return instances of
 :class:`~pyairtable.formulas.Formula`, which can be chained, combined, and eventually
 passed to the ``formula=`` keyword argument to methods like :meth:`~pyairtable.Table.all`.
+Read the module documentation for more details.
 
 .. list-table::
     :header-rows: 1
@@ -80,6 +81,24 @@ passed to the ``formula=`` keyword argument to methods like :meth:`~pyairtable.T
       - These no longer return ``str``, and instead return instances of
         :class:`~pyairtable.formulas.FunctionCall`.
 
+Changes to retrieving ORM model configuration
+---------------------------------------------
+
+The 3.0 release has changed the API for retrieving ORM model configuration:
+
+.. list-table::
+    :header-rows: 1
+
+    * - Method in 2.x
+      - Method in 3.0
+    * - ``Model.get_api()``
+      - ``Model.meta.api``
+    * - ``Model.get_base()``
+      - ``Model.meta.base``
+    * - ``Model.get_table()``
+      - ``Model.meta.table``
+    * - ``Model._get_meta(name)``
+      - ``Model.meta.get(name)``
 
 Migrating from 2.2 to 2.3
 ============================
