@@ -1,4 +1,3 @@
-from posixpath import join as urljoin
 from unittest import mock
 
 import pytest
@@ -133,11 +132,6 @@ def test_chunk(table: Table):
     assert chunks[3] == [3]
 
 
-def test_record_url(table: Table):
-    rv = table.record_url("xxx")
-    assert rv == urljoin(table.urls.records, "xxx")
-
-
 def test_api_key(table: Table, mock_response_single):
     def match_auth_header(request):
         expected_auth_header = "Bearer {}".format(table.api.api_key)
@@ -148,7 +142,7 @@ def test_api_key(table: Table, mock_response_single):
 
     with Mocker() as m:
         m.get(
-            table.record_url("rec"),
+            table.urls.record("rec"),
             status_code=200,
             json=mock_response_single,
             additional_matcher=match_auth_header,
@@ -160,7 +154,7 @@ def test_api_key(table: Table, mock_response_single):
 def test_get(table: Table, mock_response_single):
     _id = mock_response_single["id"]
     with Mocker() as mock:
-        mock.get(table.record_url(_id), status_code=200, json=mock_response_single)
+        mock.get(table.urls.record(_id), status_code=200, json=mock_response_single)
         resp = table.get(_id)
     assert dict_equals(resp, mock_response_single)
 
@@ -313,7 +307,7 @@ def test_update(table: Table, mock_response_single, replace, http_method):
     with Mocker() as mock:
         mock.register_uri(
             http_method,
-            urljoin(table.urls.records, id_),
+            table.urls.record(id_),
             status_code=201,
             json=mock_response_single,
             additional_matcher=match_request_data(post_data),
@@ -388,7 +382,7 @@ def test_delete(table: Table, mock_response_single):
     id_ = mock_response_single["id"]
     expected = {"deleted": True, "id": id_}
     with Mocker() as mock:
-        mock.delete(urljoin(table.urls.records, id_), status_code=201, json=expected)
+        mock.delete(table.urls.record(id_), status_code=201, json=expected)
         resp = table.delete(id_)
     assert resp == expected
 

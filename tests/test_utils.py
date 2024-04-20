@@ -120,6 +120,11 @@ def test_url():
     assert v // [1, 2, "a", "b"] == "https://example.com/1/2/a/b"
     assert v.add_qs(a=1, b=[2, 3, 4]) == "https://example.com?a=1&b=2&b=3&b=4"
 
-    v2 = v & {"a": 1}
+
+def test_url_cannot_append_after_params():
+    # cannot add path segments after params
+    v = utils.Url("https://example.com?a=1&b=2")
     with pytest.raises(ValueError):
-        v2 / "foo"  # cannot add path segments after params
+        v / "foo"
+    with pytest.raises(ValueError):
+        v // ["foo", "bar"]

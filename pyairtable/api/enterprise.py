@@ -6,6 +6,7 @@ from pyairtable.models._base import AirtableModel, update_forward_refs
 from pyairtable.models.audit import AuditLogResponse
 from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
 from pyairtable.utils import (
+    Url,
     UrlBuilder,
     cache_unless_forced,
     coerce_iso_str,
@@ -15,11 +16,11 @@ from pyairtable.utils import (
 
 
 class _EnterpriseUrls(UrlBuilder):
-    groups = "meta/groups"
-    meta = "meta/enterpriseAccounts/{id}"
-    users = meta + "/users"
-    claim_users = meta + "/claim/users"
-    audit_log = meta + "/auditLogEvents"
+    groups = Url("meta/groups")
+    meta = Url("meta/enterpriseAccounts/{id}")
+    users = meta / "users"
+    claim_users = meta / "claim/users"
+    audit_log = meta / "auditLogEvents"
 
 
 @enterprise_only

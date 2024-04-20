@@ -175,7 +175,7 @@ def test_linked_record():
     assert not contact.address[0].street
 
     with Mocker() as mock:
-        url = Address.meta.table.record_url(address.id)
+        url = Address.meta.table.urls.record(address.id)
         mock.get(url, status_code=200, json=record)
         contact.address[0].fetch()
 
@@ -197,7 +197,7 @@ def test_linked_record_can_be_saved(requests_mock, access_linked_records):
     address_url_re = re.escape(Address.meta.table.urls.records + "?filterByFormula=")
     contact_json = fake_record(Email="alice@example.com", Link=[address_id])
     contact_id = contact_json["id"]
-    contact_url = Contact.meta.table.record_url(contact_id)
+    contact_url = Contact.meta.table.urls.record(contact_id)
     contact_url_re = re.escape(Contact.meta.table.urls.records + "?filterByFormula=")
     requests_mock.get(re.compile(address_url_re), json={"records": [address_json]})
     requests_mock.get(re.compile(contact_url_re), json={"records": [contact_json]})
@@ -262,7 +262,7 @@ def test_undeclared_field(requests_mock, test_case):
         json={"records": [record]},
     )
     requests_mock.get(
-        Address.meta.table.urls.records / record["id"],
+        Address.meta.table.urls.record(record["id"]),
         status_code=200,
         json=record,
     )

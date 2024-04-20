@@ -686,7 +686,7 @@ def test_link_field__cycle(requests_mock):
     rec_b = {"id": id_b, "createdTime": DATETIME_S, "fields": {"Friends": [id_c]}}
     rec_c = {"id": id_c, "createdTime": DATETIME_S, "fields": {"Friends": [id_a]}}
 
-    requests_mock.get(Person.meta.table.record_url(id_a), json=rec_a)
+    requests_mock.get(Person.meta.table.urls.record(id_a), json=rec_a)
     a = Person.from_id(id_a)
 
     url = Person.meta.table.urls.records
@@ -706,7 +706,7 @@ def test_link_field__load_many(requests_mock):
     """
 
     person_id = fake_id("rec", "A")
-    person_url = Person.meta.table.record_url(person_id)
+    person_url = Person.meta.table.urls.record(person_id)
     friend_ids = [fake_id("rec", c) for c in "123456789ABCDEF"]
 
     person_json = {
@@ -958,7 +958,7 @@ def test_datetime_timezones(requests_mock):
             "fields": request.json()["fields"],
         }
 
-    m = requests_mock.patch(M.meta.table.record_url(obj.id), json=patch_callback)
+    m = requests_mock.patch(M.meta.table.urls.record(obj.id), json=patch_callback)
 
     # Test that we parse the "Z" into UTC correctly
     assert obj.dt.date() == datetime.date(2024, 2, 29)

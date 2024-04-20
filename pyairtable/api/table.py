@@ -1,4 +1,3 @@
-import posixpath
 import urllib.parse
 import warnings
 from functools import cached_property
@@ -19,13 +18,19 @@ from pyairtable.api.types import (
 )
 from pyairtable.formulas import Formula, to_formula_str
 from pyairtable.models.schema import FieldSchema, TableSchema, parse_field_schema
-from pyairtable.utils import UrlBuilder, is_table_id
+from pyairtable.utils import Url, UrlBuilder, is_table_id
 
 
 class _TableUrls(UrlBuilder):
-    records = "{base.id}/{self._url_id}"
-    records_post = records + "/listRecords"
-    fields = "meta/bases/{base.id}/tables/{self._url_id}/fields"
+    records = Url("{base.id}/{self._url_id}")
+    records_post = records / "listRecords"
+    fields = Url("meta/bases/{base.id}/tables/{self._url_id}/fields")
+
+    def record(self, record_id: RecordId) -> Url:
+        return self.records / record_id
+
+    def record_comments(self, record_id: RecordId) -> Url:
+        return self.record(record_id) / "comments"
 
 
 class Table:
@@ -166,15 +171,9 @@ class Table:
         """
         The URL component used to represent this table.
         """
-        return urllib.parse.quote(
-            self._schema.id if self._schema else self.name, safe=""
+        return (
+            self._schema.id if self._schema else urllib.parse.quote(self.name, safe="")
         )
-
-    def record_url(self, record_id: RecordId, *components: str) -> str:
-        """
-        Build the URL for the given record ID, with optional trailing components.
-        """
-        return posixpath.join(self.urls.records, record_id, *components)
 
     @property
     def api(self) -> "pyairtable.api.api.Api":
@@ -199,7 +198,7 @@ class Table:
             user_locale: |kwarg_user_locale|
             use_field_ids: |kwarg_use_field_ids|
         """
-        record = self.api.get(self.record_url(record_id), options=options)
+        record = self.api.get(self.urls.record(record_id), options=options)
         return assert_typed_dict(RecordDict, record)
 
     def iterate(self, **options: Any) -> Iterator[List[RecordDict]]:
@@ -389,7 +388,7 @@ class Table:
         method = "put" if replace else "patch"
         updated = self.api.request(
             method=method,
-            url=self.record_url(record_id),
+            url=self.urls.record(record_id),
             json={
                 "fields": fields,
                 "typecast": typecast,
@@ -523,7 +522,7 @@ class Table:
         """
         return assert_typed_dict(
             RecordDeletedDict,
-            self.api.delete(self.record_url(record_id)),
+            self.api.delete(self.urls.record(record_id)),
         )
 
     def batch_delete(self, record_ids: Iterable[RecordId]) -> List[RecordDeletedDict]:
@@ -585,11 +584,10 @@ class Table:
         Args:
             record_id: |arg_record_id|
         """
-        url = self.record_url(record_id, "comments")
+        url = self.urls.record_comments(record_id)
+        ctx = {"record_url": self.urls.record(record_id)}
         return [
-            pyairtable.models.Comment.from_api(
-                comment, self.api, context={"record_url": self.record_url(record_id)}
-            )
+            pyairtable.models.Comment.from_api(comment, self.api, context=ctx)
             for page in self.api.iterate_requests("GET", url)
             for comment in page["comments"]
         ]
@@ -614,10 +612,10 @@ class Table:
             record_id: |arg_record_id|
             text: The text of the comment. Use ``@[usrIdentifier]`` to mention users.
         """
-        url = self.record_url(record_id, "comments")
+        url = self.urls.record_comments(record_id)
         response = self.api.post(url, json={"text": text})
         return pyairtable.models.Comment.from_api(
-            response, self.api, context={"record_url": self.record_url(record_id)}
+            response, self.api, context={"record_url": self.urls.record(record_id)}
         )
 
     def schema(self, *, force: bool = False) -> TableSchema:

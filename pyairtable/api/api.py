@@ -24,8 +24,8 @@ TimeoutTuple: TypeAlias = Tuple[int, int]
 
 
 class _ApiUrls(UrlBuilder):
-    whoami = "meta/whoami"
-    bases = "meta/bases"
+    whoami = Url("meta/whoami")
+    bases = Url("meta/bases")
 
 
 class Api:

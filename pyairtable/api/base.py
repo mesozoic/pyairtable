@@ -11,16 +11,16 @@ from pyairtable.models.webhook import (
     Webhook,
     WebhookSpecification,
 )
-from pyairtable.utils import UrlBuilder, cache_unless_forced, enterprise_only
+from pyairtable.utils import Url, UrlBuilder, cache_unless_forced, enterprise_only
 
 
 class _BaseUrls(UrlBuilder):
-    meta = "meta/bases/{id}"
-    interfaces = meta + "/interfaces"
-    shares = meta + "/shares"
-    tables = meta + "/tables"
-    collaborators = meta + "/collaborators"
-    webhooks = "bases/{id}/webhooks"
+    meta = Url("meta/bases/{id}")
+    interfaces = meta / "interfaces"
+    shares = meta / "shares"
+    tables = meta / "tables"
+    collaborators = meta / "collaborators"
+    webhooks = Url("bases/{id}/webhooks")
 
     def interface(self, interface_id: str) -> str:
         return f"{self.interfaces}/{interface_id}"

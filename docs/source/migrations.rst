@@ -25,6 +25,8 @@ subclass of ``str`` that has some overloaded operators. See docs for more detail
       - Building a URL in 3.0
     * - ``table.url``
       - ``table.urls.records``
+    * - ``table.record_url(record_id)``
+      - ``table.urls.record(record_id)``
     * - ``table.meta_url("one", "two")``
       - ``table.urls.meta / "one" / "two"``
     * - ``table.meta_url(*parts)``
