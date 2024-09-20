@@ -60,7 +60,7 @@ class Formula:
     def __invert__(self) -> "Formula":
         return NOT(self)
 
-    def flatten(self) -> "Formula":
+    def flatten(self, /, memo: Optional[Set[int]] = None) -> SelfType:
         """
         Return a new formula with nested boolean statements flattened.
         """
@@ -231,7 +231,7 @@ class Compound(Formula):
     def __repr__(self) -> str:
         return f"{self.operator}({repr(self.components)[1:-1]})"
 
-    def flatten(self, /, memo: Optional[Set[int]] = None) -> "Compound":
+    def flatten(self, /, memo: Optional[Set[int]] = None) -> SelfType:
         """
         Reduces the depth of nested AND, OR, and NOT statements.
         """
@@ -244,9 +244,9 @@ class Compound(Formula):
             if isinstance(item, Compound) and item.operator == self.operator:
                 flattened.extend(item.flatten(memo=memo).components)
             else:
-                flattened.append(item.flatten())
+                flattened.append(item.flatten(memo=memo))
 
-        return Compound(self.operator, flattened)
+        return self.__class__(self.operator, flattened)
 
     @classmethod
     def build(cls, operator: str, *components: Any, **fields: Any) -> SelfType:

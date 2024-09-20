@@ -189,10 +189,19 @@ def test_compound_flatten():
 
 
 def test_compound_flatten_circular_dependency():
+    # shallow circular dependency
     circular = NOT(F.Formula("x"))
     circular.components = [circular]
     with pytest.raises(pyairtable.exceptions.CircularFormulaError):
         circular.flatten()
+
+    # deep circular dependency
+    a_b = AND(F.Formula("a"), F.Formula("b"))
+    not_a_b = NOT(a_b)
+    deep_circular = AND(F.Formula("c"), not_a_b)
+    a_b.components.append(deep_circular)
+    with pytest.raises(pyairtable.exceptions.CircularFormulaError):
+        deep_circular.flatten()
 
 
 @pytest.mark.parametrize(
