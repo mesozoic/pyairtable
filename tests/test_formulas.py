@@ -12,6 +12,12 @@ from pyairtable.formulas import AND, EQ, GT, GTE, LT, LTE, NE, NOT, OR
 from pyairtable.testing import fake_meta
 
 
+def test_bool():
+    assert bool(F.Formula("a")) is True
+    assert bool(F.Formula("b")) is True
+    assert bool(F.Formula("")) is False
+
+
 def test_equivalence():
     assert F.Formula("a") == F.Formula("a")
     assert F.Formula("a") != F.Formula("b")
@@ -31,6 +37,9 @@ def test_operators():
     assert lft.flatten() is lft
     assert repr(lft ^ rgt) == "XOR(Formula('a'), Formula('b'))"
     assert str(lft ^ rgt) == "XOR(a, b)"
+    assert repr(lft & lft & rgt) == "AND(AND(Formula('a'), Formula('a')), Formula('b'))"
+    assert str(lft & lft & rgt) == "AND(a, a, b)"
+    assert str((lft | rgt) | (rgt | lft)) == "OR(a, b, b, a)"
 
 
 @pytest.mark.parametrize(
@@ -479,3 +488,30 @@ def test_function_calls(fn, argcount):
     assert result.args == args
     assert repr(result) == f"{fn}({args_repr})"
     assert str(result) == f"{fn}({args_formula})"
+
+
+def test_empty_formulas():
+    """
+    Test that we can create an empty formula and use it in boolean expressions.
+    This can be useful for cases where a developer needs to start with a blank
+    formula, conditionally combine it with other formulas, and still have a valid
+    output in the end.
+    """
+    empty = F.Formula("")
+    foo = F.EQ(F.Field("foo"), 1)
+    bar = F.EQ(F.Field("bar"), 2)
+
+    assert str(empty) == ""
+    assert str(empty & foo) == "AND({foo}=1)"
+    assert str(empty | foo) == "OR({foo}=1)"
+    assert str(foo & empty) == "AND({foo}=1)"
+    assert str(foo | empty) == "OR({foo}=1)"
+    assert str(foo & empty & bar) == "AND({foo}=1, {bar}=2)"
+    assert str(foo | empty | bar) == "OR({foo}=1, {bar}=2)"
+
+    with pytest.raises(ValueError, match="requires exactly one condition; got 0"):
+        ~empty
+    with pytest.raises(ValueError, match="requires at least one component"):
+        empty & empty
+    with pytest.raises(ValueError, match="requires at least one component"):
+        empty | empty

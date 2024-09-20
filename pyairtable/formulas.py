@@ -34,17 +34,20 @@ class Formula:
     def __init__(self, value: str) -> None:
         self.value = value
 
+    def __bool__(self) -> bool:
+        return bool(str(self))
+
     def __str__(self) -> str:
-        return self.value
+        return self.flatten().value
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}({self.value!r})"
 
     def __and__(self, other: Any) -> "Formula":
-        return AND(self, to_formula(other))
+        return AND(*(to_formula(item) for item in (self, other) if item))
 
     def __or__(self, other: Any) -> "Formula":
-        return OR(self, to_formula(other))
+        return OR(*(to_formula(item) for item in (self, other) if item))
 
     def __xor__(self, other: Any) -> "Formula":
         return XOR(self, to_formula(other))
@@ -222,7 +225,7 @@ class Compound(Formula):
         return (self.operator, self.components) == (other.operator, other.components)
 
     def __str__(self) -> str:
-        joined_components = ", ".join(str(c) for c in self.components)
+        joined_components = ", ".join(str(c) for c in self.flatten().components)
         return f"{self.operator}({joined_components})"
 
     def __repr__(self) -> str:
@@ -250,12 +253,13 @@ class Compound(Formula):
         items = list(components)
         if len(items) == 1 and hasattr(first := items[0], "__iter__"):
             items = [first] if isinstance(first, str) else list(first)
+        items = [Formula(item) if isinstance(item, str) else item for item in items]
         if fields:
             items.extend(EQ(Field(k), v) for (k, v) in fields.items())
         return cls(operator, items)
 
 
-def AND(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
+def AND(*components: Union[Formula, Iterable[Formula], str], **fields: Any) -> Compound:
     """
     Join one or more logical conditions into an AND compound condition.
     Keyword arguments will be treated as field names.
@@ -266,7 +270,7 @@ def AND(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compou
     return Compound.build("AND", *components, **fields)
 
 
-def OR(*components: Union[Formula, Iterable[Formula]], **fields: Any) -> Compound:
+def OR(*components: Union[Formula, Iterable[Formula], str], **fields: Any) -> Compound:
     """
     Join one or more logical conditions into an OR compound condition.
     Keyword arguments will be treated as field names.
