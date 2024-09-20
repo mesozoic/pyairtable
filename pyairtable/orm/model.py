@@ -392,7 +392,7 @@ class Model:
             memoize: |kwarg_orm_memoize|
         """
         try:
-            instance = cast(SelfType, cls._memoized[record_id])  # type: ignore[redundant-cast]
+            instance = cast(SelfType, cls._memoized[record_id])
         except KeyError:
             instance = cls(id=record_id)
         if fetch and not instance._fetched:
@@ -441,7 +441,7 @@ class Model:
         if cls._memoized:
             for record_id in record_ids:
                 try:
-                    by_id[record_id] = cast(SelfType, cls._memoized[record_id])  # type: ignore[redundant-cast]
+                    by_id[record_id] = cast(SelfType, cls._memoized[record_id])
                 except KeyError:
                     pass
 
