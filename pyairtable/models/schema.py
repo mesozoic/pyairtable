@@ -180,6 +180,7 @@ class BaseCollaborators(_Collaborators, url="meta/bases/{base.id}"):
         url="meta/bases/{base.id}/interfaces/{key}",
     ):
         created_time: datetime
+        first_publish_time: Optional[datetime]
         group_collaborators: List["GroupCollaborator"] = _FL()
         individual_collaborators: List["IndividualCollaborator"] = _FL()
         invite_links: List["InterfaceInviteLink"] = _FL()
@@ -565,6 +566,8 @@ class UserInfo(
     enterprise_user_type: Optional[str]
     invited_to_airtable_by_user_id: Optional[str]
     is_managed: bool = False
+    is_admin: bool = False
+    is_super_admin: bool = False
     groups: List[NestedId] = _FL()
     collaborations: "Collaborations" = pydantic.Field(default_factory=Collaborations)
 
@@ -651,7 +654,7 @@ class CheckboxFieldConfig(AirtableModel):
     """
 
     type: Literal["checkbox"]
-    options: Optional["CheckboxFieldOptions"]
+    options: "CheckboxFieldOptions"
 
 
 class CheckboxFieldOptions(AirtableModel):
@@ -665,7 +668,7 @@ class CountFieldConfig(AirtableModel):
     """
 
     type: Literal["count"]
-    options: Optional["CountFieldOptions"]
+    options: "CountFieldOptions"
 
 
 class CountFieldOptions(AirtableModel):
@@ -745,7 +748,7 @@ class DurationFieldConfig(AirtableModel):
     """
 
     type: Literal["duration"]
-    options: Optional["DurationFieldOptions"]
+    options: "DurationFieldOptions"
 
 
 class DurationFieldOptions(AirtableModel):
@@ -766,7 +769,7 @@ class ExternalSyncSourceFieldConfig(AirtableModel):
     """
 
     type: Literal["externalSyncSource"]
-    options: Optional["SingleSelectFieldOptions"]
+    options: "SingleSelectFieldOptions"
 
 
 class FormulaFieldConfig(AirtableModel):
@@ -775,7 +778,7 @@ class FormulaFieldConfig(AirtableModel):
     """
 
     type: Literal["formula"]
-    options: Optional["FormulaFieldOptions"]
+    options: "FormulaFieldOptions"
 
 
 class FormulaFieldOptions(AirtableModel):
@@ -799,13 +802,21 @@ class LastModifiedTimeFieldConfig(AirtableModel):
     """
 
     type: Literal["lastModifiedTime"]
-    options: Optional["LastModifiedTimeFieldOptions"]
+    options: "LastModifiedTimeFieldOptions"
 
 
 class LastModifiedTimeFieldOptions(AirtableModel):
     is_valid: bool
     referenced_field_ids: Optional[List[str]]
     result: Optional[Union["DateFieldConfig", "DateTimeFieldConfig"]]
+
+
+class ManualSortFieldConfig(AirtableModel):
+    """
+    Field configuration for ``manualSort`` field type (not documented).
+    """
+
+    type: Literal["manualSort"]
 
 
 class MultilineTextFieldConfig(AirtableModel):
@@ -822,7 +833,7 @@ class MultipleAttachmentsFieldConfig(AirtableModel):
     """
 
     type: Literal["multipleAttachments"]
-    options: Optional["MultipleAttachmentsFieldOptions"]
+    options: "MultipleAttachmentsFieldOptions"
 
 
 class MultipleAttachmentsFieldOptions(AirtableModel):
@@ -847,7 +858,7 @@ class MultipleLookupValuesFieldConfig(AirtableModel):
     """
 
     type: Literal["multipleLookupValues"]
-    options: Optional["MultipleLookupValuesFieldOptions"]
+    options: "MultipleLookupValuesFieldOptions"
 
 
 class MultipleLookupValuesFieldOptions(AirtableModel):
@@ -863,7 +874,7 @@ class MultipleRecordLinksFieldConfig(AirtableModel):
     """
 
     type: Literal["multipleRecordLinks"]
-    options: Optional["MultipleRecordLinksFieldOptions"]
+    options: "MultipleRecordLinksFieldOptions"
 
 
 class MultipleRecordLinksFieldOptions(AirtableModel):
@@ -880,7 +891,7 @@ class MultipleSelectsFieldConfig(AirtableModel):
     """
 
     type: Literal["multipleSelects"]
-    options: Optional["SingleSelectFieldOptions"]
+    options: "SingleSelectFieldOptions"
 
 
 class NumberFieldConfig(AirtableModel):
@@ -889,7 +900,7 @@ class NumberFieldConfig(AirtableModel):
     """
 
     type: Literal["number"]
-    options: Optional["NumberFieldOptions"]
+    options: "NumberFieldOptions"
 
 
 class NumberFieldOptions(AirtableModel):
@@ -902,7 +913,7 @@ class PercentFieldConfig(AirtableModel):
     """
 
     type: Literal["percent"]
-    options: Optional["NumberFieldOptions"]
+    options: "NumberFieldOptions"
 
 
 class PhoneNumberFieldConfig(AirtableModel):
@@ -919,7 +930,7 @@ class RatingFieldConfig(AirtableModel):
     """
 
     type: Literal["rating"]
-    options: Optional["RatingFieldOptions"]
+    options: "RatingFieldOptions"
 
 
 class RatingFieldOptions(AirtableModel):
@@ -942,7 +953,7 @@ class RollupFieldConfig(AirtableModel):
     """
 
     type: Literal["rollup"]
-    options: Optional["RollupFieldOptions"]
+    options: "RollupFieldOptions"
 
 
 class RollupFieldOptions(AirtableModel):
@@ -975,7 +986,7 @@ class SingleSelectFieldConfig(AirtableModel):
     """
 
     type: Literal["singleSelect"]
-    options: Optional["SingleSelectFieldOptions"]
+    options: "SingleSelectFieldOptions"
 
 
 class SingleSelectFieldOptions(AirtableModel):
@@ -1072,6 +1083,7 @@ FieldConfig: TypeAlias = Union[
     FormulaFieldConfig,
     LastModifiedByFieldConfig,
     LastModifiedTimeFieldConfig,
+    ManualSortFieldConfig,
     MultilineTextFieldConfig,
     MultipleAttachmentsFieldConfig,
     MultipleCollaboratorsFieldConfig,
@@ -1191,6 +1203,12 @@ class LastModifiedByFieldSchema(_FieldSchemaBase, LastModifiedByFieldConfig):
 class LastModifiedTimeFieldSchema(_FieldSchemaBase, LastModifiedTimeFieldConfig):
     """
     Field schema for `Last modified time <https://airtable.com/developers/web/api/field-model#lastmodifiedtime>`__.
+    """
+
+
+class ManualSortFieldSchema(_FieldSchemaBase, ManualSortFieldConfig):
+    """
+    Field schema for ``manualSort`` field type (not documented).
     """
 
 
@@ -1315,6 +1333,7 @@ FieldSchema: TypeAlias = Union[
     FormulaFieldSchema,
     LastModifiedByFieldSchema,
     LastModifiedTimeFieldSchema,
+    ManualSortFieldSchema,
     MultilineTextFieldSchema,
     MultipleAttachmentsFieldSchema,
     MultipleCollaboratorsFieldSchema,
@@ -1333,7 +1352,7 @@ FieldSchema: TypeAlias = Union[
     UrlFieldSchema,
     UnknownFieldSchema,
 ]
-# [[[end]]] (checksum: afb669896323650954a082cb4b079c16)
+# [[[end]]] (checksum: ca159bc8c76b1d15a2a57f0e76fb8911)
 # fmt: on
 
 
@@ -1343,7 +1362,11 @@ class _HasFieldSchema(AirtableModel):
     field_schema: FieldSchema
 
 
-def parse_field_schema(obj: Any) -> FieldSchema:
+def parse_field_schema(obj: Dict[str, Any]) -> FieldSchema:
+    """
+    Given a ``dict`` representing a field schema,
+    parse it into the appropriate FieldSchema subclass.
+    """
     return _HasFieldSchema.parse_obj({"field_schema": obj}).field_schema
 
 

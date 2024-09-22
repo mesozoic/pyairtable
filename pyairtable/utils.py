@@ -2,9 +2,11 @@ import inspect
 import re
 import textwrap
 import urllib.parse
+import warnings
 from datetime import date, datetime
 from functools import partial, wraps
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -22,11 +24,17 @@ from typing import (
 import requests
 from typing_extensions import ParamSpec, Protocol
 
-from pyairtable.api.types import CreateAttachmentDict
+from pyairtable.api.types import CreateAttachmentByUrl
+
+if TYPE_CHECKING:
+    from pyairtable.api.api import Api
+
 
 P = ParamSpec("P")
 R = TypeVar("R", covariant=True)
 T = TypeVar("T")
+C = TypeVar("C", contravariant=True)
+F = TypeVar("F", bound=Callable[..., Any])
 
 
 def datetime_to_iso_str(value: datetime) -> str:
@@ -72,7 +80,7 @@ def date_from_iso_str(value: str) -> date:
     return datetime.strptime(value, "%Y-%m-%d").date()
 
 
-def attachment(url: str, filename: str = "") -> CreateAttachmentDict:
+def attachment(url: str, filename: str = "") -> CreateAttachmentByUrl:
     """
     Build a ``dict`` in the expected format for creating attachments.
 
@@ -83,7 +91,7 @@ def attachment(url: str, filename: str = "") -> CreateAttachmentDict:
     Note:
         Attachment field values **must** be an array of
         :class:`~pyairtable.api.types.AttachmentDict` or
-        :class:`~pyairtable.api.types.CreateAttachmentDict`;
+        :class:`~pyairtable.api.types.CreateAttachmentByUrl`;
         it is not valid to pass a single item to the API.
 
     Usage:
@@ -106,6 +114,11 @@ def attachment(url: str, filename: str = "") -> CreateAttachmentDict:
 
 
     """
+    warnings.warn(
+        "attachment(url, filename) is deprecated; use {'url': url, 'filename': filename} instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     return {"url": url} if not filename else {"url": url, "filename": filename}
 
 
@@ -141,9 +154,6 @@ is_base_id = partial(is_airtable_id, prefix="app")
 is_table_id = partial(is_airtable_id, prefix="tbl")
 is_field_id = partial(is_airtable_id, prefix="fld")
 is_user_id = partial(is_airtable_id, prefix="usr")
-
-
-F = TypeVar("F", bound=Callable[..., Any])
 
 
 def enterprise_only(wrapped: F, /, modify_docstring: bool = True) -> F:
@@ -195,13 +205,21 @@ def _append_docstring_text(obj: Any, text: str) -> None:
     obj.__doc__ = f"{doc}\n\n{text}"
 
 
-class FetchMethod(Protocol, Generic[R]):
-    def __get__(self, instance: Any, owner: Any) -> Callable[..., R]: ...
+def docstring_from(obj: Any, append: str = "") -> Callable[[F], F]:
+    def _wrapper(func: F) -> F:
+        func.__doc__ = obj.__doc__ + append
+        return func
 
-    def __call__(self_, self: Any, *, force: bool = False) -> R: ...
+    return _wrapper
 
 
-def cache_unless_forced(func: Callable[P, R]) -> FetchMethod[R]:
+class FetchMethod(Protocol, Generic[C, R]):
+    def __get__(self, instance: C, owner: Any) -> Callable[..., R]: ...
+
+    def __call__(self_, self: C, *, force: bool = False) -> R: ...
+
+
+def cache_unless_forced(func: Callable[[C], R]) -> FetchMethod[C, R]:
     """
     Wrap a method (e.g. ``Base.shares()``) in a decorator that will save
     a memoized version of the return value for future reuse, but will also
@@ -213,7 +231,7 @@ def cache_unless_forced(func: Callable[P, R]) -> FetchMethod[R]:
         attr = "_cached_" + attr.lstrip("_")
 
     @wraps(func)
-    def _inner(self: Any, *, force: bool = False) -> R:
+    def _inner(self: C, *, force: bool = False) -> R:
         if force or getattr(self, attr, None) is None:
             setattr(self, attr, func(self))
         return cast(R, getattr(self, attr))
@@ -221,7 +239,7 @@ def cache_unless_forced(func: Callable[P, R]) -> FetchMethod[R]:
     _inner.__annotations__["force"] = bool
     _append_docstring_text(_inner, "Args:\n\tforce: |kwarg_force_metadata|")
 
-    return _inner
+    return cast(FetchMethod[C, R], _inner)
 
 
 def coerce_iso_str(value: Any) -> Optional[str]:
@@ -273,26 +291,28 @@ class Url(str):
         return urllib.parse.urlparse(self)
 
     def __truediv__(self, other: Any) -> "Url":
-        parsed = self.parse()
-        if parsed.query:
-            raise ValueError("cannot add path segments after params")
-        if (path := parsed.path) and not path.endswith("/"):
-            path = path + "/"
-        new = parsed._replace(path=f"{path}{other}")
-        return Url(urllib.parse.urlunparse(new))
+        return self.add_path(other)
 
-    def __floordiv__(self, others: Iterable[str]) -> "Url":
+    def __floordiv__(self, others: Iterable[Any]) -> "Url":
+        return self.add_path(*others)
+
+    def __and__(self, params: Dict[str, Any]) -> "Url":
+        return self.add_qs(params)
+
+    def add_path(self, *others: Iterable[Any]) -> "Url":
+        """
+        Build a copy of this URL with additional path segments.
+        """
+        if not others:
+            raise TypeError("add_path() requires at least one argument")
         parsed = self.parse()
         if parsed.query:
             raise ValueError("cannot add path segments after params")
         parts = [str(other) for other in others]
         if parsed.path:
-            parts.insert(0, parsed.path)
+            parts.insert(0, parsed.path.rstrip("/"))
         new = parsed._replace(path="/".join(parts))
         return Url(urllib.parse.urlunparse(new))
-
-    def __and__(self, params: Dict[str, Any]) -> "Url":
-        return self.add_qs(params)
 
     def add_qs(
         self,
@@ -302,6 +322,8 @@ class Url(str):
         """
         Build a copy of this URL with additional query parameters.
         """
+        if not (params or other_params):
+            raise TypeError("add_qs() requires at least one argument")
         params = {} if params is None else params
         params.update(other_params)
         parsed = self.parse()
@@ -334,10 +356,32 @@ class UrlBuilder:
             setattr(self, attr, api.build_url(value))
 
     @classmethod
-    def _find_api(self, context: Any) -> "pyairtable.api.api.Api":
-        if isinstance(context, pyairtable.api.api.Api):
+    def _find_api(self, context: Any) -> "Api":
+        from pyairtable.api.api import Api  # avoid circular import
+
+        if isinstance(context, Api):
             return context
-        return cast(pyairtable.api.api.Api, context.api)
+        return cast(Api, context.api)
 
 
-import pyairtable.api.api  # noqa
+__all__ = [
+    "attachment",
+    "cache_unless_forced",
+    "chunked",
+    "coerce_iso_str",
+    "coerce_list_str",
+    "date_from_iso_str",
+    "date_to_iso_str",
+    "datetime_from_iso_str",
+    "datetime_to_iso_str",
+    "docstring_from",
+    "enterprise_only",
+    "is_airtable_id",
+    "is_base_id",
+    "is_field_id",
+    "is_record_id",
+    "is_table_id",
+    "is_user_id",
+    "Url",
+    "UrlBuilder",
+]

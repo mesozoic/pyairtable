@@ -1,7 +1,8 @@
 import datetime
-from functools import cached_property
+from functools import cached_property, partialmethod
 from typing import Any, Dict, Iterable, Iterator, List, Literal, Optional, Union
 
+from pyairtable._compat import pydantic
 from pyairtable.models._base import AirtableModel, update_forward_refs
 from pyairtable.models.audit import AuditLogResponse
 from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
@@ -16,11 +17,23 @@ from pyairtable.utils import (
 
 
 class _EnterpriseUrls(UrlBuilder):
-    groups = Url("meta/groups")
     meta = Url("meta/enterpriseAccounts/{id}")
     users = meta / "users"
+    groups = Url("meta/groups")
     claim_users = meta / "claim/users"
     audit_log = meta / "auditLogEvents"
+
+    def user(self, user_id: str) -> Url:
+        return self.users / user_id
+
+    def group(self, group_id: str) -> Url:
+        return self.groups / group_id
+
+    def admin_access(self, action: str) -> Url:
+        return self.meta / f"users/{action}AdminAccess"
+
+    grant_admin = partialmethod(admin_access, "grant")
+    revoke_admin = partialmethod(admin_access, "revoke")
 
 
 @enterprise_only
@@ -59,8 +72,7 @@ class Enterprise:
                 from Airtable. This may result in faster responses.
         """
         params = {"include": ["collaborations"] if collaborations else []}
-        url = f"{self.urls.groups}/{group_id}"
-        payload = self.api.get(url, params=params)
+        payload = self.api.get(self.urls.group(group_id), params=params)
         return UserGroup.parse_obj(payload)
 
     def user(self, id_or_email: str, collaborations: bool = True) -> UserInfo:
@@ -261,7 +273,7 @@ class Enterprise:
 
     def claim_users(
         self, users: Dict[str, Literal["managed", "unmanaged"]]
-    ) -> "ClaimUsersResponse":
+    ) -> "ManageUsersResponse":
         """
         Batch manage organizations enterprise account users. This endpoint allows you
         to change a user's membership status from being unmanaged to being an
@@ -284,7 +296,7 @@ class Enterprise:
             ]
         }
         response = self.api.post(self.urls.claim_users, json=payload)
-        return ClaimUsersResponse.from_api(response, self.api, context=self)
+        return ManageUsersResponse.from_api(response, self.api, context=self)
 
     def delete_users(self, emails: Iterable[str]) -> "DeleteUsersResponse":
         """
@@ -295,6 +307,41 @@ class Enterprise:
         """
         response = self.api.delete(self.urls.users, params={"email": list(emails)})
         return DeleteUsersResponse.from_api(response, self.api, context=self)
+
+    def grant_admin(self, *users: Union[str, UserInfo]) -> "ManageUsersResponse":
+        """
+        Grant admin access to one or more users.
+
+        Args:
+            users: One or more user IDs, email addresses, or instances of
+                :class:`~pyairtable.models.schema.UserInfo`.
+        """
+        return self._post_admin_access("grant", users)
+
+    def revoke_admin(self, *users: Union[str, UserInfo]) -> "ManageUsersResponse":
+        """
+        Revoke admin access to one or more users.
+
+        Args:
+            users: One or more user IDs, email addresses, or instances of
+                :class:`~pyairtable.models.schema.UserInfo`.
+        """
+        return self._post_admin_access("revoke", users)
+
+    def _post_admin_access(
+        self, action: str, users: Iterable[Union[str, UserInfo]]
+    ) -> "ManageUsersResponse":
+        response = self.api.post(
+            self.urls.admin_access(action),
+            json={
+                "users": [
+                    {"email": user_id} if "@" in user_id else {"id": user_id}
+                    for user in users
+                    for user_id in [user.id if isinstance(user, UserInfo) else user]
+                ]
+            },
+        )
+        return ManageUsersResponse.from_api(response, self.api, context=self)
 
 
 class UserRemoved(AirtableModel):
@@ -360,13 +407,15 @@ class DeleteUsersResponse(AirtableModel):
         message: Optional[str] = None
 
 
-class ClaimUsersResponse(AirtableModel):
+class ManageUsersResponse(AirtableModel):
     """
-    Returned from the `Manage user membership <https://airtable.com/developers/web/api/manage-user-membership>`__
-    endpoint.
+    Returned from the `Manage user membership <https://airtable.com/developers/web/api/manage-user-membership>`__,
+    `Grant admin access <https://airtable.com/developers/web/api/grant-admin-access>`__, and
+    `Revoke admin access <https://airtable.com/developers/web/api/revoke-admin-access>`__
+    endpoints.
     """
 
-    errors: List["ClaimUsersResponse.Error"]
+    errors: List["ManageUsersResponse.Error"] = pydantic.Field(default_factory=list)
 
     class Error(AirtableModel):
         id: Optional[str] = None

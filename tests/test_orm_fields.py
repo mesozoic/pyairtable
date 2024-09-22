@@ -6,8 +6,10 @@ from unittest import mock
 import pytest
 from requests_mock import NoMockAddress
 
+import pyairtable.exceptions
 from pyairtable.formulas import OR, RECORD_ID
 from pyairtable.orm import fields as f
+from pyairtable.orm.lists import AttachmentsList
 from pyairtable.orm.model import Model
 from pyairtable.testing import (
     fake_attachment,
@@ -17,6 +19,13 @@ from pyairtable.testing import (
     fake_user,
 )
 from pyairtable.utils import datetime_to_iso_str
+
+try:
+    from pytest import Mark as _PytestMark
+except ImportError:
+    # older versions of pytest don't expose pytest.Mark directly
+    from _pytest.mark import Mark as _PytestMark
+
 
 DATE_S = "2023-01-01"
 DATE_V = datetime.date(2023, 1, 1)
@@ -263,6 +272,7 @@ def test_type_validation_LinkField():
         (f.LookupField, ["any", "values"]),
         (f.CreatedByField, fake_user()),
         (f.LastModifiedByField, fake_user()),
+        (f.ManualSortField, "fcca"),
         # If a 3-tuple, we should be able to convert API -> ORM values.
         (f.CreatedTimeField, DATETIME_S, DATETIME_V),
         (f.LastModifiedTimeField, DATETIME_S, DATETIME_V),
@@ -394,6 +404,7 @@ def test_writable_fields(test_case):
         f.LastModifiedByField,
         f.LastModifiedTimeField,
         f.LookupField,
+        f.ManualSortField,
         f.MultipleCollaboratorsField,
         f.MultipleSelectField,
         f.NumberField,
@@ -458,11 +469,11 @@ def test_rejects_null(field_type):
         the_field = field_type("Field Name")
 
     obj = T()
-    with pytest.raises(f.MissingValue):
+    with pytest.raises(pyairtable.exceptions.MissingValueError):
         obj.the_field
-    with pytest.raises(f.MissingValue):
+    with pytest.raises(pyairtable.exceptions.MissingValueError):
         obj.the_field = None
-    with pytest.raises(f.MissingValue):
+    with pytest.raises(pyairtable.exceptions.MissingValueError):
         T(the_field=None)
 
 
@@ -494,7 +505,7 @@ def assert_all_fields_tested_by(*test_fns, exclude=()):
     """
 
     def extract_fields(obj):
-        if isinstance(obj, pytest.Mark):
+        if isinstance(obj, _PytestMark):
             yield from [*extract_fields(obj.args), *extract_fields(obj.kwargs)]
         elif isinstance(obj, str):
             pass
@@ -511,7 +522,7 @@ def assert_all_fields_tested_by(*test_fns, exclude=()):
         field_class
         for test_function in test_fns
         for pytestmark in getattr(test_function, "pytestmark", [])
-        if isinstance(pytestmark, pytest.Mark) and pytestmark.name == "parametrize"
+        if isinstance(pytestmark, _PytestMark) and pytestmark.name == "parametrize"
         for field_class in extract_fields(pytestmark)
         if field_class not in exclude
     }
@@ -745,6 +756,56 @@ def test_link_field__load_many(requests_mock):
     assert mock_list.call_count == 2
 
 
+@pytest.mark.parametrize(
+    "mutation",
+    (
+        "author.books = [book]",
+        "author.books.append(book)",
+        "author.books[0] = book",
+        "author.books.insert(0, book)",
+        "author.books[0:1] = []",
+        "author.books.pop(0)",
+        "del author.books[0]",
+        "author.books.remove(author.books[0])",
+        "author.books.clear()",
+        "author.books.extend([book])",
+    ),
+)
+def test_link_field__save(requests_mock, mutation):
+    """
+    Test that we correctly detect changes to linked fields and save them.
+    """
+
+    class Book(Model):
+        Meta = fake_meta()
+
+    class Author(Model):
+        Meta = fake_meta()
+        books = f.LinkField("Books", model=Book)
+
+    b1 = Book.from_record(fake_record())
+    b2 = Book.from_record(fake_record())
+    author = Author.from_record(fake_record({"Books": [b1.id]}))
+
+    def _cb(request, context):
+        return {
+            "id": author.id,
+            "createdTime": datetime_to_iso_str(author.created_time),
+            "fields": request.json()["fields"],
+        }
+
+    requests_mock.get(
+        Book.meta.table.urls.records,
+        json={"records": [b1.to_record(), b2.to_record()]},
+    )
+    m = requests_mock.patch(Author.meta.table.urls.record(author.id), json=_cb)
+    exec(mutation, {}, {"author": author, "book": b2})
+    assert author._changed["Books"]
+    author.save()
+    assert m.call_count == 1
+    assert "Books" in m.last_request.json()["fields"]
+
+
 def test_single_link_field():
     class Author(Model):
         Meta = fake_meta()
@@ -822,7 +883,7 @@ def test_single_link_field__multiple_values():
 
     # if book.author.__set__ not called, the entire list will be sent back to the API
     with mock.patch("pyairtable.Table.update", return_value=book.to_record()) as m:
-        book.save()
+        book.save(force=True)
         m.assert_called_once_with(book.id, {"Author": [a1, a2, a3]}, typecast=True)
 
     # if we modify the field value, it will drop items 2-N
@@ -847,7 +908,7 @@ def test_single_link_field__raise_if_many():
         author = f.SingleLinkField("Author", Author, raise_if_many=True)
 
     book = Book.from_record(fake_record(Author=[fake_id(), fake_id()]))
-    with pytest.raises(f.MultipleValues):
+    with pytest.raises(pyairtable.exceptions.MultipleValuesError):
         book.author
 
 
@@ -963,7 +1024,7 @@ def test_datetime_timezones(requests_mock):
     # Test that we parse the "Z" into UTC correctly
     assert obj.dt.date() == datetime.date(2024, 2, 29)
     assert obj.dt.tzinfo is datetime.timezone.utc
-    obj.save()
+    obj.save(force=True)
     assert m.last_request.json()["fields"]["dt"] == "2024-02-29T12:34:56.000Z"
 
     # Test that we can set a UTC timezone and it will be saved as-is.
@@ -1007,5 +1068,69 @@ def test_select_field(fields, expected):
     assert obj.the_field == expected
 
     with mock.patch("pyairtable.Table.update", return_value=obj.to_record()) as m:
-        obj.save()
+        obj.save(force=True)
         m.assert_called_once_with(obj.id, fields, typecast=True)
+
+
+@pytest.mark.parametrize(
+    "class_kwargs",
+    [
+        {"contains_type": 1},
+        {"list_class": 1},
+        {"list_class": dict},
+    ],
+)
+def test_invalid_list_class_params(class_kwargs):
+    """
+    Test that certain parameters to ListField are invalid.
+    """
+
+    with pytest.raises(TypeError):
+
+        class ListFieldSubclass(f._ListField, **class_kwargs):
+            pass
+
+
+@mock.patch("pyairtable.Table.create")
+def test_attachments__set(mock_create):
+    """
+    Test that AttachmentsField can be set with a list of AttachmentDict,
+    and the value will be coerced to an AttachmentsList.
+    """
+    mock_create.return_value = {
+        "id": fake_id(),
+        "createdTime": DATETIME_S,
+        "fields": {
+            "Attachments": [
+                {
+                    "id": fake_id("att"),
+                    "url": "https://example.com",
+                    "filename": "a.jpg",
+                }
+            ]
+        },
+    }
+
+    class T(Model):
+        Meta = fake_meta()
+        attachments = f.AttachmentsField("Attachments")
+
+    obj = T()
+    assert obj.attachments == []
+    assert isinstance(obj.attachments, AttachmentsList)
+
+    obj.attachments = [{"url": "https://example.com"}]
+    assert isinstance(obj.attachments, AttachmentsList)
+
+    obj.save()
+    assert isinstance(obj.attachments, AttachmentsList)
+    assert obj.attachments[0]["url"] == "https://example.com"
+
+
+def test_attachments__set_invalid_type():
+    class T(Model):
+        Meta = fake_meta()
+        attachments = f.AttachmentsField("Attachments")
+
+    with pytest.raises(TypeError):
+        T().attachments = [1, 2, 3]

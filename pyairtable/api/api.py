@@ -52,6 +52,9 @@ class Api:
     _bases: Optional[Dict[str, "pyairtable.api.base.Base"]] = None
 
     urls = cached_property(_ApiUrls)
+    endpoint_url: Url
+    session: Session
+    use_field_ids: bool
 
     def __init__(
         self,
@@ -60,6 +63,7 @@ class Api:
         timeout: Optional[TimeoutTuple] = None,
         retry_strategy: Optional[Union[bool, retrying.Retry]] = True,
         endpoint_url: str = "https://api.airtable.com",
+        use_field_ids: bool = False,
     ):
         """
         Args:
@@ -75,6 +79,8 @@ class Api:
                 (see :func:`~pyairtable.retry_strategy` for details).
             endpoint_url: The API endpoint to use. Override this if you are using
                 a debugging or caching proxy.
+            use_field_ids: If ``True``, all API requests will return responses
+                with field IDs instead of field names.
         """
         if retry_strategy is True:
             retry_strategy = retrying.retry_strategy()
@@ -86,6 +92,7 @@ class Api:
         self.endpoint_url = Url(endpoint_url)
         self.timeout = timeout
         self.api_key = api_key
+        self.use_field_ids = use_field_ids
 
     @property
     def api_key(self) -> str:

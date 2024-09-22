@@ -22,8 +22,8 @@ class _BaseUrls(UrlBuilder):
     collaborators = meta / "collaborators"
     webhooks = Url("bases/{id}/webhooks")
 
-    def interface(self, interface_id: str) -> str:
-        return f"{self.interfaces}/{interface_id}"
+    def interface(self, interface_id: str) -> Url:
+        return self.interfaces / interface_id
 
 
 class Base:

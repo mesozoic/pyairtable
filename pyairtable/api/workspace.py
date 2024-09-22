@@ -6,7 +6,7 @@ from pyairtable.utils import Url, UrlBuilder, cache_unless_forced, enterprise_on
 
 
 class _WorkspaceUrls(UrlBuilder):
-    meta = Url("meta/workspaces/{self.id}")
+    meta = Url("meta/workspaces/{id}")
     move_base = meta / "moveBase"
     collaborators = meta / "collaborators"
 
@@ -109,9 +109,9 @@ class Workspace:
         See https://airtable.com/developers/web/api/move-base
 
         Usage:
+            >>> base = api.base("appCwFmhESAta6clC")
             >>> ws = api.workspace("wspmhESAta6clCCwF")
-            >>> base = api.workspace("appCwFmhESAta6clC")
-            >>> workspace.move_base(base, "wspSomeOtherPlace", index=0)
+            >>> ws.move_base(base, "wspSomeOtherPlace", index=0)
         """
         base_id = base if isinstance(base, str) else base.id
         target_id = target if isinstance(target, str) else target.id

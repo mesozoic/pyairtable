@@ -118,7 +118,7 @@ read `Field types and cell values <https://airtable.com/developers/web/api/field
             links = re.findall(r"`.+? <.*?field-model.*?>`", cls.__doc__ or "")
             ro = ' 🔒' if cls.readonly else ''
             cog.outl(f"   * - :class:`~pyairtable.orm.fields.{cls.__name__}`{ro}")
-            cog.outl(f"     - {', '.join(f'{link}__' for link in links) if links else '(see docs)'}")
+            cog.outl(f"     - {', '.join(f'{link}__' for link in links) if links else '(undocumented)'}")
 
     classes = sorted(fields.ALL_FIELDS, key=attrgetter("__name__"))
     optional = [cls for cls in classes if not cls.__name__.startswith("Required")]
@@ -185,6 +185,8 @@ read `Field types and cell values <https://airtable.com/developers/web/api/field
      - `Link to another record <https://airtable.com/developers/web/api/field-model#foreignkey>`__
    * - :class:`~pyairtable.orm.fields.LookupField` 🔒
      - `Lookup <https://airtable.com/developers/web/api/field-model#lookup>`__
+   * - :class:`~pyairtable.orm.fields.ManualSortField` 🔒
+     - (undocumented)
    * - :class:`~pyairtable.orm.fields.MultipleCollaboratorsField`
      - `Multiple Collaborators <https://airtable.com/developers/web/api/field-model#multicollaborator>`__
    * - :class:`~pyairtable.orm.fields.MultipleSelectField`
@@ -257,7 +259,7 @@ See :ref:`Required Values` for more details.
      - `Single line text <https://airtable.com/developers/web/api/field-model#simpletext>`__, `Long text <https://airtable.com/developers/web/api/field-model#multilinetext>`__
    * - :class:`~pyairtable.orm.fields.RequiredUrlField`
      - `Url <https://airtable.com/developers/web/api/field-model#urltext>`__
-.. [[[end]]] (checksum: 131138e1071ba71d4f46f05da4d57570)
+.. [[[end]]] (checksum: 43c56200ca513d3a0603bb5a6ddbb1ef)
 
 
 Formula, Rollup, and Lookup Fields
@@ -467,6 +469,82 @@ there are four components:
 4. The model class, the path to the model class, or :data:`~pyairtable.orm.fields.LinkSelf`
 
 
+Memoizing linked records
+"""""""""""""""""""""""""""""
+
+There are cases where your application may need to retrieve hundreds of nested
+models through the ORM, and you don't want to make hundreds of Airtable API calls.
+pyAirtable provides a way to pre-fetch and memoize instances for each record,
+which will then be reused later by record link fields.
+
+The usual way to do this is passing ``memoize=True`` to a retrieval method
+at the beginning of your code to pre-fetch any records you might need.
+For example, you might have the following:
+
+.. code-block:: python
+
+    from pyairtable.orm import Model, fields as F
+    from operator import attrgetter
+
+    class Book(Model):
+        class Meta: ...
+        title = F.TextField("Title")
+        published = F.DateField("Publication Date")
+
+    class Author(Model):
+        class Meta: ...
+        name = F.TextField("Name")
+        books = F.LinkField("Books", Book)
+
+    def main():
+        books = Book.all(memoize=True)
+        authors = Author.all(memoize=True)
+        for author in authors:
+            print(f"* {author.name}")
+            for book in sorted(author.books, key=attrgetter("published")):
+                print(f"  - {book.title} ({book.published.isoformat()})")
+
+This code will perform a series of API calls at the beginning to fetch
+all records from the Books and Authors tables, so that ``author.books``
+does not need to request linked records one at a time during the loop.
+
+.. note::
+    Memoization does not affect whether pyAirtable will make an API call.
+    It only affects whether pyAirtable will reuse a model instance that
+    was already created, or create a new one. For example, calling
+    ``model.all(memoize=True)`` N times will still result in N calls to the API.
+
+You can also set ``memoize = True`` in the ``Meta`` configuration for your model,
+which indicates that you always want to memoize models retrieved from the API:
+
+.. code-block:: python
+
+    class Book(Model):
+        Meta = {..., "memoize": True}
+        title = F.TextField("Title")
+
+    class Author(Model):
+        Meta = {...}
+        name = F.TextField("Name")
+        books = F.LinkField("Books", Book)
+
+    Book.first()  # this will memoize the book it creates
+    Author.first().books  # this will memoize all books created
+    Book.all(memoize=False)  # this will skip memoization
+
+The following methods support the ``memoize=`` keyword argument.
+You can pass ``memoize=False`` to override memoization that is
+enabled on the model configuration.
+
+   * :meth:`Model.all <pyairtable.orm.Model.all>`
+   * :meth:`Model.first <pyairtable.orm.Model.first>`
+   * :meth:`Model.from_record <pyairtable.orm.Model.from_record>`
+   * :meth:`Model.from_id <pyairtable.orm.Model.from_id>`
+   * :meth:`Model.from_ids <pyairtable.orm.Model.from_ids>`
+   * :meth:`LinkField.populate <pyairtable.orm.fields.LinkField.populate>`
+   * :meth:`SingleLinkField.populate <pyairtable.orm.fields.SingleLinkField.populate>`
+
+
 Comments
 ----------
 
@@ -503,6 +581,37 @@ comments on a particular record, just like their :class:`~pyairtable.Table` equi
     >>> record.comments()[0].text
     'Never mind!'
     >>> comment.delete()
+
+
+Attachments in the ORM
+----------------------
+
+When retrieving attachments from the API, pyAirtable will return a list of
+:class:`~pyairtable.api.types.AttachmentDict`.
+
+    >>> model = YourModel.from_id("recMNxslc6jG0XedV")
+    >>> model.attachments
+    [
+        {
+          'id': 'attMNxslc6jG0XedV',
+          'url': 'https://dl.airtable.com/...',
+          'filename': 'example.jpg',
+          'size': 12345,
+          'type': 'image/jpeg'
+        },
+        ...
+    ]
+
+You can append your own values to this list, and as long as they have
+either a ``"id"`` or ``"url"`` key, they will be saved back to the API.
+
+    >>> model.attachments.append({"url": "https://example.com/example.jpg"})
+    >>> model.save()
+
+You can also use :meth:`~pyairtable.orm.lists.AttachmentsList.upload` to
+directly upload content to Airtable:
+
+.. automethod:: pyairtable.orm.lists.AttachmentsList.upload
 
 
 ORM Limitations

@@ -11,8 +11,14 @@ Migrating from 2.x to 3.0
 
 The 3.0 release introduces a few breaking changes to the API. These are summarized below.
 
-Refactored URL builders
-----------------------------
+Deprecated metadata module removed
+---------------------------------------------
+
+The 3.0 release removed the ``pyairtable.metadata`` module. For supported alternatives,
+see :doc:`metadata`.
+
+Changes to generating URLs
+---------------------------------------------
 
 The following properties and methods for constructing URLs have been renamed or removed.
 These methods now return instances of :class:`~pyairtable.utils.Url`, which is a
@@ -42,8 +48,8 @@ subclass of ``str`` that has some overloaded operators. See docs for more detail
     * - ``workspace.url``
       - ``workspace.urls.meta``
 
-Redesigned formulas module
-----------------------------
+Changes to the formulas module
+---------------------------------------------
 
 Functions and methods in the :mod:`pyairtable.formulas` module now return instances of
 :class:`~pyairtable.formulas.Formula`, which can be chained, combined, and eventually
@@ -82,25 +88,66 @@ Read the module documentation for more details.
     * - :func:`~pyairtable.formulas.IF`, :func:`~pyairtable.formulas.FIND`, :func:`~pyairtable.formulas.LOWER`
       - These no longer return ``str``, and instead return instances of
         :class:`~pyairtable.formulas.FunctionCall`.
+    * - :func:`~pyairtable.formulas.escape_quotes`
+      - Deprecated. Use :func:`~pyairtable.formulas.quoted` instead.
 
-Changes to retrieving ORM model configuration
+Changes to the ORM in 3.0
 ---------------------------------------------
 
-The 3.0 release has changed the API for retrieving ORM model configuration:
+* :data:`Model.created_time <pyairtable.orm.Model.created_time>` is now a ``datetime`` (or ``None``)
+  instead of ``str``. This change also applies to all timestamp fields used in :ref:`API: pyairtable.models`.
 
-.. list-table::
-    :header-rows: 1
+* :meth:`Model.save <pyairtable.orm.Model.save>` now only saves changed fields to the API, which
+  means it will sometimes not perform any network traffic (though this behavior can be overridden).
+  It also now returns an instance of :class:`~pyairtable.orm.SaveResult` instead of ``bool``.
 
-    * - Method in 2.x
-      - Method in 3.0
-    * - ``Model.get_api()``
-      - ``Model.meta.api``
-    * - ``Model.get_base()``
-      - ``Model.meta.base``
-    * - ``Model.get_table()``
-      - ``Model.meta.table``
-    * - ``Model._get_meta(name)``
-      - ``Model.meta.get(name)``
+* Fields which contain lists of values now return instances of ``ChangeTrackingList``, which
+  is still a subclass of ``list``. This should not affect most uses, but it does mean that
+  some code which relies on exact type checking may need to be updated:
+
+    >>> isinstance(Foo().atts, list)
+    True
+    >>> type(Foo().atts) is list
+    False
+    >>> type(Foo().atts)
+    <class 'pyairtable.orm.lists.ChangeTrackingList'>
+
+* The 3.0 release has changed the API for retrieving ORM model configuration:
+
+  .. list-table::
+      :header-rows: 1
+
+      * - Method in 2.x
+        - Method in 3.0
+      * - ``Model.get_api()``
+        - ``Model.meta.api``
+      * - ``Model.get_base()``
+        - ``Model.meta.base``
+      * - ``Model.get_table()``
+        - ``Model.meta.table``
+      * - ``Model._get_meta(name)``
+        - ``Model.meta.get(name)``
+
+Breaking type changes
+---------------------------------------------
+
+* ``pyairtable.api.types.CreateAttachmentDict`` is now a ``Union`` instead of a ``TypedDict``,
+  which may change some type checking behavior in code that uses it.
+
+Breaking name changes
+---------------------------------------------
+
+    * - | ``pyairtable.api.enterprise.ClaimUsersResponse``
+        | has become :class:`pyairtable.api.enterprise.ManageUsersResponse`
+    * - | ``pyairtable.formulas.CircularDependency``
+        | has become :class:`pyairtable.exceptions.CircularFormulaError`
+    * - | ``pyairtable.params.InvalidParamException``
+        | has become :class:`pyairtable.exceptions.InvalidParameterError`
+    * - | ``pyairtable.orm.fields.MissingValue``
+        | has become :class:`pyairtable.exceptions.MissingValueError`
+    * - | ``pyairtable.orm.fields.MultipleValues``
+        | has become :class:`pyairtable.exceptions.MultipleValuesError`
+
 
 Migrating from 2.2 to 2.3
 ============================

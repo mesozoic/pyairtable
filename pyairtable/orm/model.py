@@ -1,4 +1,6 @@
+import dataclasses
 import datetime
+import warnings
 from dataclasses import dataclass
 from functools import cached_property
 from typing import (
@@ -10,8 +12,10 @@ from typing import (
     List,
     Mapping,
     Optional,
+    Set,
     Type,
     Union,
+    cast,
 )
 
 from typing_extensions import Self as SelfType
@@ -49,7 +53,13 @@ class Model:
         * ``table_name`` (required) - Table ID or name.
         * ``timeout`` - A tuple indicating a connect and read timeout. Defaults to no timeout.
         * ``typecast`` - |kwarg_typecast| Defaults to ``True``.
-        * ``use_field_ids`` - |kwarg_use_field_ids| Defaults to ``False``.
+        * ``retry`` - An instance of `urllib3.util.Retry <https://urllib3.readthedocs.io/en/stable/reference/urllib3.util.html#urllib3.util.Retry>`_.
+          If ``None`` or ``False``, requests will not be retried.
+          If ``True``, the default strategy will be applied
+          (see :func:`~pyairtable.retry_strategy` for details).
+        * ``use_field_ids`` - Whether fields will be defined by ID, rather than name. Defaults to ``False``.
+        * ``memoize`` - Whether the model should reuse models it creates between requests.
+          See :ref:`Memoizing linked records` for more information.
 
     For example, the following two are equivalent:
 
@@ -116,17 +126,32 @@ class Model:
     meta: ClassVar["_Meta"]
 
     _deleted: bool = False
+    _fetched: bool = False
     _fields: Dict[FieldName, Any]
+    _changed: Dict[FieldName, bool]
+    _memoized: ClassVar[Dict[RecordId, SelfType]]
 
     def __init_subclass__(cls, **kwargs: Any):
         cls.meta = _Meta(cls)
+        cls._memoized = {}
         cls._validate_class()
         super().__init_subclass__(**kwargs)
 
-    def __repr__(self) -> str:
-        if not self.id:
-            return f"<unsaved {self.__class__.__name__}>"
-        return f"<{self.__class__.__name__} id={self.id!r}>"
+    @classmethod
+    def _validate_class(cls) -> None:
+        # Verify required Meta attributes were set (but don't call any callables)
+        assert cls.meta.get("api_key", required=True, call=False)
+        assert cls.meta.get("base_id", required=True, call=False)
+        assert cls.meta.get("table_name", required=True, call=False)
+
+        model_attributes = [a for a in cls.__dict__.keys() if not a.startswith("__")]
+        overridden = set(model_attributes).intersection(Model.__dict__.keys())
+        if overridden:
+            raise ValueError(
+                "Class {cls} fields clash with existing method: {name}".format(
+                    cls=cls.__name__, name=overridden
+                )
+            )
 
     @classmethod
     def _attribute_descriptor_map(cls) -> Dict[str, AnyField]:
@@ -175,8 +200,10 @@ class Model:
         <Contact id='recWPqD9izdsNvlE'>
         """
 
-        if "id" in fields:
+        try:
             self.id = fields.pop("id")
+        except KeyError:
+            pass
 
         # Field values in internal (not API) representation
         self._fields = {}
@@ -187,21 +214,13 @@ class Model:
                 raise AttributeError(key)
             setattr(self, key, value)
 
-    @classmethod
-    def _validate_class(cls) -> None:
-        # Verify required Meta attributes were set (but don't call any callables)
-        assert cls.meta.get("api_key", required=True, call=False)
-        assert cls.meta.get("base_id", required=True, call=False)
-        assert cls.meta.get("table_name", required=True, call=False)
+        # Only start tracking changes after the object is created
+        self._changed = {}
 
-        model_attributes = [a for a in cls.__dict__.keys() if not a.startswith("__")]
-        overridden = set(model_attributes).intersection(Model.__dict__.keys())
-        if overridden:
-            raise ValueError(
-                "Class {cls} fields clash with existing method: {name}".format(
-                    cls=cls.__name__, name=overridden
-                )
-            )
+    def __repr__(self) -> str:
+        if not self.id:
+            return f"<unsaved {self.__class__.__name__}>"
+        return f"<{self.__class__.__name__} id={self.id!r}>"
 
     def exists(self) -> bool:
         """
@@ -209,31 +228,43 @@ class Model:
         """
         return bool(self.id)
 
-    def save(self) -> bool:
+    def save(self, *, force: bool = False) -> "SaveResult":
         """
         Save the model to the API.
 
         If the instance does not exist already, it will be created;
-        otherwise, the existing record will be updated.
+        otherwise, the existing record will be updated, using only the
+        fields which have been modified since it was retrieved.
 
-        Returns:
-            ``True`` if a record was created, ``False`` if it was updated.
+        Args:
+            force: If ``True``, all fields will be saved, even if they have not changed.
         """
         if self._deleted:
             raise RuntimeError(f"{self.id} was deleted")
-        table = self.meta.table
-        fields = self.to_record(only_writable=True)["fields"]
+
+        field_values = self.to_record(only_writable=True)["fields"]
 
         if not self.id:
-            record = table.create(fields, typecast=self.meta.typecast)
-            did_create = True
-        else:
-            record = table.update(self.id, fields, typecast=self.meta.typecast)
-            did_create = False
+            record = self.meta.table.create(field_values, typecast=self.meta.typecast)
+            self.id = record["id"]
+            self.created_time = datetime_from_iso_str(record["createdTime"])
+            self._changed.clear()
+            return SaveResult(self.id, created=True, field_names=set(field_values))
 
-        self.id = record["id"]
-        self.created_time = datetime_from_iso_str(record["createdTime"])
-        return did_create
+        if not force:
+            if not self._changed:
+                return SaveResult(self.id)
+            field_values = {
+                field_name: value
+                for field_name, value in field_values.items()
+                if self._changed.get(field_name)
+            }
+
+        self.meta.table.update(self.id, field_values, typecast=self.meta.typecast)
+        self._changed.clear()
+        return SaveResult(
+            self.id, forced=force, updated=True, field_names=set(field_values)
+        )
 
     def delete(self) -> bool:
         """
@@ -251,24 +282,44 @@ class Model:
         return bool(result["deleted"])
 
     @classmethod
-    def all(cls, **kwargs: Any) -> List[SelfType]:
+    def all(cls, *, memoize: Optional[bool] = None, **kwargs: Any) -> List[SelfType]:
         """
         Retrieve all records for this model. For all supported
         keyword arguments, see :meth:`Table.all <pyairtable.Table.all>`.
+
+        Args:
+            memoize: |kwarg_orm_memoize|
         """
         kwargs.update(cls.meta.request_kwargs)
-        return [cls.from_record(record) for record in cls.meta.table.all(**kwargs)]
+        return [
+            cls.from_record(record, memoize=memoize)
+            for record in cls.meta.table.all(**kwargs)
+        ]
 
     @classmethod
-    def first(cls, **kwargs: Any) -> Optional[SelfType]:
+    def first(
+        cls, *, memoize: Optional[bool] = None, **kwargs: Any
+    ) -> Optional[SelfType]:
         """
         Retrieve the first record for this model. For all supported
         keyword arguments, see :meth:`Table.first <pyairtable.Table.first>`.
+
+        Args:
+            memoize: |kwarg_orm_memoize|
         """
         kwargs.update(cls.meta.request_kwargs)
         if record := cls.meta.table.first(**kwargs):
-            return cls.from_record(record)
+            return cls.from_record(record, memoize=memoize)
         return None
+
+    @classmethod
+    def _maybe_memoize(cls, instance: SelfType, memoize: Optional[bool]) -> None:
+        """
+        If memoization is enabled, save the instance to the memoization cache.
+        """
+        memoize = cls.meta.memoize if memoize is None else memoize
+        if memoize:
+            cls._memoized[instance.id] = instance
 
     def to_record(self, only_writable: bool = False) -> RecordDict:
         """
@@ -292,9 +343,15 @@ class Model:
         return {"id": self.id, "createdTime": ct, "fields": fields}
 
     @classmethod
-    def from_record(cls, record: RecordDict) -> SelfType:
+    def from_record(
+        cls, record: RecordDict, *, memoize: Optional[bool] = None
+    ) -> SelfType:
         """
         Create an instance from a record dict.
+
+        Args:
+            record: The record data from the Airtable API.
+            memoize: |kwarg_orm_memoize|
         """
         name_field_map = cls._field_name_descriptor_map()
         # Convert Column Names into model field names
@@ -313,27 +370,34 @@ class Model:
         # any readonly fields, instead we directly set instance._fields.
         instance = cls(id=record["id"])
         instance._fields = field_values
+        instance._fetched = True
         instance.created_time = datetime_from_iso_str(record["createdTime"])
+        cls._maybe_memoize(instance, memoize)
         return instance
 
     @classmethod
     def from_id(
         cls,
         record_id: RecordId,
+        *,
         fetch: bool = True,
+        memoize: Optional[bool] = None,
     ) -> SelfType:
         """
         Create an instance from a record ID.
 
         Args:
             record_id: |arg_record_id|
-            fetch: If ``True``, record will be fetched and field values will be
-                updated. If ``False``, a new instance is created with the provided ID,
-                but field values are unset.
+            fetch: |kwarg_orm_fetch|
+            memoize: |kwarg_orm_memoize|
         """
-        instance = cls(id=record_id)
-        if fetch:
+        try:
+            instance = cast(SelfType, cls._memoized[record_id])  # type: ignore[redundant-cast]
+        except KeyError:
+            instance = cls(id=record_id)
+        if fetch and not instance._fetched:
             instance.fetch()
+        cls._maybe_memoize(instance, memoize)
         return instance
 
     def fetch(self) -> None:
@@ -344,15 +408,19 @@ class Model:
             raise ValueError("cannot be fetched because instance does not have an id")
 
         record = self.meta.table.get(self.id)
-        unused = self.from_record(record)
+        unused = self.from_record(record, memoize=False)
         self._fields = unused._fields
+        self._changed.clear()
+        self._fetched = True
         self.created_time = unused.created_time
 
     @classmethod
     def from_ids(
         cls,
         record_ids: Iterable[RecordId],
+        *,
         fetch: bool = True,
+        memoize: Optional[bool] = None,
     ) -> List[SelfType]:
         """
         Create a list of instances from record IDs. If any record IDs returned
@@ -361,20 +429,34 @@ class Model:
 
         Args:
             record_ids: |arg_record_id|
-            fetch: If ``True``, records will be fetched and field values will be
-                updated. If ``False``, new instances are created with the provided IDs,
-                but field values are unset.
+            fetch: |kwarg_orm_fetch|
+            memoize: |kwarg_orm_memoize|
         """
-        record_ids = list(record_ids)
         if not fetch:
             return [cls.from_id(record_id, fetch=False) for record_id in record_ids]
-        # There's no endpoint to query multiple IDs at once, but we can use a formula.
-        formula = OR(EQ(RECORD_ID(), record_id) for record_id in record_ids)
-        record_data = cls.meta.table.all(formula=formula)
-        records = [cls.from_record(record) for record in record_data]
+
+        record_ids = list(record_ids)
+        by_id: Dict[RecordId, SelfType] = {}
+
+        if cls._memoized:
+            for record_id in record_ids:
+                try:
+                    by_id[record_id] = cast(SelfType, cls._memoized[record_id])  # type: ignore[redundant-cast]
+                except KeyError:
+                    pass
+
+        if remaining := sorted(set(record_ids) - set(by_id)):
+            # Only retrieve records that aren't already memoized
+            formula = OR(EQ(RECORD_ID(), record_id) for record_id in sorted(remaining))
+            by_id.update(
+                {
+                    record["id"]: cls.from_record(record, memoize=memoize)
+                    for record in cls.meta.table.all(formula=formula)
+                }
+            )
+
         # Ensure we return records in the same order, and raise KeyError if any are missing
-        records_by_id = {record.id: record for record in records}
-        return [records_by_id[record_id] for record_id in record_ids]
+        return [by_id[record_id] for record_id in record_ids]
 
     @classmethod
     def batch_save(cls, models: List[SelfType]) -> None:
@@ -446,13 +528,16 @@ class _Meta:
 
     @property
     def _config(self) -> Mapping[str, Any]:
-        if not (model_meta := getattr(self.model, "Meta", None)):
+        if not (meta := getattr(self.model, "Meta", None)):
             raise AttributeError(f"{self.model.__name__}.Meta must be defined")
-        if isinstance(model_meta, dict):
-            return model_meta
-        if isinstance(model_meta, type):
-            return model_meta.__dict__
-        raise TypeError(type(model_meta))
+        if isinstance(meta, dict):
+            return meta
+        try:
+            return cast(Mapping[str, Any], meta.__dict__)
+        except AttributeError:
+            raise TypeError(
+                f"{self.model.__name__}.Meta must be a dict or class; got {type(meta)}"
+            )
 
     def get(
         self,
@@ -537,6 +622,10 @@ class _Meta:
         return bool(self.get("use_field_ids", default=False))
 
     @property
+    def memoize(self) -> bool:
+        return bool(self.get("memoize", default=False))
+
+    @property
     def request_kwargs(self) -> Dict[str, Any]:
         return {
             "user_locale": None,
@@ -544,3 +633,66 @@ class _Meta:
             "time_zone": None,
             "use_field_ids": self.use_field_ids,
         }
+
+
+@dataclass(frozen=True)
+class SaveResult:
+    """
+    Represents the result of saving a record to the API. The result's
+    attributes contain more granular information about the save operation:
+
+        >>> result = model.save()
+        >>> result.record_id
+        'recWPqD9izdsNvlE'
+        >>> result.created
+        False
+        >>> result.updated
+        True
+        >>> result.forced
+        False
+        >>> result.field_names
+        {'Name', 'Email'}
+
+    If none of the model's fields have changed, calling :meth:`~pyairtable.orm.Model.save`
+    will not perform any API requests and will return a SaveResult with no changes.
+
+        >>> model = YourModel()
+        >>> result = model.save()
+        >>> result.saved
+        True
+        >>> second_result = model.save()
+        >>> second_result.saved
+        False
+
+    For backwards compatibility, instances of SaveResult will evaluate as truthy
+    if the record was created, and falsy if the record was not created.
+    """
+
+    record_id: RecordId
+    created: bool = False
+    updated: bool = False
+    forced: bool = False
+    field_names: Set[FieldName] = dataclasses.field(default_factory=set)
+
+    def __bool__(self) -> bool:
+        """
+        Returns ``True`` if the record was created. This is for backwards compatibility
+        with the behavior of :meth:`~pyairtable.orm.Model.save` prior to the 3.0 release,
+        which returned a boolean indicating whether a record was created.
+        """
+        warnings.warn(
+            "Model.save() now returns SaveResult instead of bool; switch"
+            " to checking Model.save().created instead before the 4.0 release.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self.created
+
+    @property
+    def saved(self) -> bool:
+        """
+        Whether the record was saved to the API. If ``False``, this indicates there
+        were no changes to the model and the :meth:`~pyairtable.orm.Model.save`
+        operation was not forced.
+        """
+        return self.created or self.updated

@@ -58,7 +58,8 @@
     bet set to null. If ``False``, only provided fields are updated.
 
 .. |kwarg_use_field_ids| replace:: An optional boolean value that lets you return field objects where the
-    key is the field id. This defaults to `false`, which returns field objects where the key is the field name.
+    key is the field id. This defaults to ``False``, which returns field objects where the key is the field name.
+    This behavior can be overridden by passing ``use_field_ids=True`` to :class:`~pyairtable.Api`.
 
 .. |kwarg_force_metadata| replace::
     By default, this method will only fetch information from the API if it has not been cached.
@@ -68,6 +69,20 @@
     If ``False``, will create an object without validating the ID/name provided.
     If ``True``, will fetch information from the metadata API and validate the ID/name exists,
     raising ``KeyError`` if it does not.
+
+.. |kwarg_orm_fetch| replace::
+    If ``True``, records will be fetched and field values will be
+    updated. If ``False``, new instances are created with the provided IDs,
+    but field values are unset.
+
+.. |kwarg_orm_memoize| replace::
+    If ``True``, any objects created will be memoized for future reuse.
+    If ``False``, objects created will *not* be memoized.
+    The default behavior is defined on the :class:`~pyairtable.orm.Model` subclass.
+
+.. |kwarg_orm_lazy| replace::
+    If ``True``, this field will return empty objects with only IDs;
+    call :meth:`~pyairtable.orm.Model.fetch` to retrieve values.
 
 .. |kwarg_permission_level| replace::
     See `application permission levels <https://airtable.com/developers/web/api/model/application-permission-levels>`__.

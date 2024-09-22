@@ -1,6 +1,8 @@
 from datetime import datetime
 from typing import Dict, Optional
 
+from pyairtable._compat import pydantic
+
 from ._base import AirtableModel, CanDeleteModel, CanUpdateModel, update_forward_refs
 from .collaborator import Collaborator
 
@@ -52,13 +54,13 @@ class Comment(
     created_time: datetime
 
     #: The ISO 8601 timestamp of when the comment was last edited.
-    last_updated_time: Optional[str]
+    last_updated_time: Optional[datetime]
 
     #: The account which created the comment.
     author: Collaborator
 
     #: Users or groups that were mentioned in the text.
-    mentioned: Optional[Dict[str, "Mentioned"]]
+    mentioned: Dict[str, "Mentioned"] = pydantic.Field(default_factory=dict)
 
 
 class Mentioned(AirtableModel):

@@ -1,4 +1,6 @@
+import importlib
 import json
+import re
 from collections import OrderedDict
 from pathlib import Path
 from posixpath import join as urljoin
@@ -10,6 +12,7 @@ from mock import Mock
 from requests import HTTPError
 
 from pyairtable import Api, Base, Table, Workspace
+from pyairtable.api.enterprise import Enterprise
 
 
 @pytest.fixture
@@ -162,11 +165,16 @@ def schema_obj(api, sample_json):
     """
 
     def _get_schema_obj(name: str, *, context: Any = None) -> Any:
-        from pyairtable.models import schema
+        if name.startswith("pyairtable."):
+            # pyairtable.models.Webhook.created_time -> ('pyairtable.models', 'Webhook.created_time')
+            match = re.match(r"(pyairtable\.[a-z_.]+)\.([A-Z].+)$", name)
+            modpath, name = match.groups()
+        else:
+            modpath = "pyairtable.models.schema"
 
         obj_name, _, obj_path = name.partition(".")
         obj_data = sample_json(obj_name)
-        obj_cls = getattr(schema, obj_name)
+        obj_cls = getattr(importlib.import_module(modpath), obj_name)
 
         if context:
             obj = obj_cls.from_api(obj_data, api, context=context)
@@ -178,3 +186,25 @@ def schema_obj(api, sample_json):
         return obj
 
     return _get_schema_obj
+
+
+@pytest.fixture
+def mock_base_metadata(base, sample_json, requests_mock):
+    base_json = sample_json("BaseCollaborators")
+    requests_mock.get(base.api.urls.bases, json=sample_json("Bases"))
+    requests_mock.get(base.urls.meta, json=base_json)
+    requests_mock.get(base.urls.tables, json=sample_json("BaseSchema"))
+    requests_mock.get(base.urls.shares, json=sample_json("BaseShares"))
+    for pbd_id, pbd_json in base_json["interfaces"].items():
+        requests_mock.get(base.urls.interface(pbd_id), json=pbd_json)
+
+
+@pytest.fixture
+def mock_workspace_metadata(workspace, sample_json, requests_mock):
+    workspace_json = sample_json("WorkspaceCollaborators")
+    requests_mock.get(workspace.urls.meta, json=workspace_json)
+
+
+@pytest.fixture
+def enterprise(api):
+    return Enterprise(api, "entUBq2RGdihxl3vU")

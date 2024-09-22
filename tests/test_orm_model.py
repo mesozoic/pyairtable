@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from functools import partial
 from unittest import mock
 
@@ -6,7 +7,22 @@ from requests_mock import Mocker
 
 from pyairtable.orm import Model
 from pyairtable.orm import fields as f
+from pyairtable.orm.model import SaveResult
 from pyairtable.testing import fake_id, fake_meta, fake_record
+
+NOW = datetime.now(timezone.utc).isoformat()
+
+
+class FakeModel(Model):
+    Meta = fake_meta()
+    one = f.TextField("one")
+    two = f.TextField("two")
+
+
+class FakeModelByIds(Model):
+    Meta = fake_meta(use_field_ids=True, table_name="Apartments")
+    Name = f.TextField("fld1VnoyuotSTyxW1")
+    Age = f.NumberField("fld2VnoyuotSTy4g6")
 
 
 @pytest.fixture(autouse=True)
@@ -68,6 +84,47 @@ def test_model_empty_meta_with_callable():
         m.assert_not_called()
 
 
+def test_model_meta_dict():
+    """
+    Test that we can define Meta as a dict rather than a class.
+    """
+
+    class Address(Model):
+        Meta = {
+            "api_key": "fake_api_key",
+            "base_id": "fake_base_id",
+            "table_name": "fake_table_name",
+            "timeout": (1, 1),
+            "retry": False,
+        }
+
+    assert Address.meta.api.api_key == "fake_api_key"
+
+
+@pytest.mark.parametrize("invalid_meta", ([1, 2, 3], "invalid", True))
+def test_model_invalid_meta(invalid_meta):
+    """
+    Test that model creation raises a TypeError if Meta is an invalid type.
+    """
+    with pytest.raises(TypeError):
+
+        class Address(Model):
+            Meta = invalid_meta
+
+
+@pytest.mark.parametrize("meta_kwargs", [{"timeout": 1}, {"retry": "sure"}])
+def test_model_meta_checks_types(meta_kwargs):
+    """
+    Test that accessing meta raises a TypeError if a value is an invalid type.
+    """
+
+    class Address(Model):
+        Meta = fake_meta(**meta_kwargs)
+
+    with pytest.raises(TypeError):
+        Address.meta.api
+
+
 @pytest.mark.parametrize("name", ("exists", "id"))
 def test_model_overlapping(name):
     """
@@ -83,18 +140,6 @@ def test_model_overlapping(name):
                 name: f.TextField(name),
             },
         )
-
-
-class FakeModel(Model):
-    Meta = fake_meta()
-    one = f.TextField("one")
-    two = f.TextField("two")
-
-
-class FakeModelByIds(Model):
-    Meta = fake_meta(use_field_ids=True, table_name="Apartments")
-    Name = f.TextField("fld1VnoyuotSTyxW1")
-    Age = f.NumberField("fld2VnoyuotSTy4g6")
 
 
 def test_repr():
@@ -181,7 +226,9 @@ def test_from_ids(mock_api):
         url=FakeModel.meta.table.urls.records,
         fallback=("post", FakeModel.meta.table.urls.records_post),
         options={
-            "formula": "OR(%s)" % ", ".join(f"RECORD_ID()='{id}'" for id in fake_ids)
+            "formula": (
+                "OR(%s)" % ", ".join(f"RECORD_ID()='{id}'" for id in sorted(fake_ids))
+            )
         },
     )
     assert len(contacts) == len(fake_records)
@@ -268,6 +315,48 @@ def test_get_fields_by_id(fake_records_by_id):
         _ = getattr(fake_models[1], fake_records_by_id[0]["Age"])
 
 
+def test_meta_wrapper():
+    """
+    Test that Model subclasses have access to the _Meta wrapper.
+    """
+
+    class Dummy(Model):
+        Meta = fake_meta(api_key="asdf")
+
+    assert Dummy.meta.model is Dummy
+    assert Dummy.meta.api.api_key == "asdf"
+
+
+def test_meta_dict():
+    """
+    Test that Meta can be a dict instead of a class.
+    """
+
+    class Dummy(Model):
+        Meta = {
+            "api_key": "asdf",
+            "base_id": "qwer",
+            "table_name": "zxcv",
+            "timeout": (1, 1),
+        }
+
+    assert Dummy.meta.model is Dummy
+    assert Dummy.meta.api.api_key == "asdf"
+
+
+@pytest.mark.parametrize("meta_kwargs", [{"timeout": 1}, {"retry": "asdf"}])
+def test_meta_type_check(meta_kwargs):
+    """
+    Test that we check types on certain Meta attributes.
+    """
+
+    class Dummy(Model):
+        Meta = fake_meta(**meta_kwargs)
+
+    with pytest.raises(TypeError):
+        Dummy.meta.api
+
+
 def test_dynamic_model_meta():
     """
     Test that we can provide callables in our Meta class to provide
@@ -289,7 +378,88 @@ def test_dynamic_model_meta():
     f = Fake()
     Fake.Meta.table_name.assert_not_called()
 
-    assert f.meta.get("api_key") == data["api_key"]
-    assert f.meta.get("base_id") == data["base_id"]
-    assert f.meta.get("table_name") == data["table_name"]
+    assert f.meta.api_key == data["api_key"]
+    assert f.meta.base_id == data["base_id"]
+    assert f.meta.table_name == data["table_name"]
     Fake.Meta.table_name.assert_called_once()
+
+
+@mock.patch("pyairtable.Table.create")
+def test_save__create(mock_create):
+    """
+    Test that we can save a model instance we've created.
+    """
+    mock_create.return_value = {
+        "id": fake_id,
+        "createdTime": datetime.now(timezone.utc).isoformat(),
+        "fields": {"one": "ONE", "two": "TWO"},
+    }
+    obj = FakeModel(one="ONE", two="TWO")
+    result = obj.save()
+    assert result.saved
+    assert result.created
+    assert result.field_names == {"one", "two"}
+    assert not result.updated
+    assert not result.forced
+    mock_create.assert_called_once_with({"one": "ONE", "two": "TWO"}, typecast=True)
+
+
+@mock.patch("pyairtable.Table.update")
+def test_save__update(mock_update):
+    """
+    Test that we can save a model instance that already exists.
+    """
+    obj = FakeModel.from_record(fake_record(one="ONE", two="TWO"))
+    obj.one = "new value"
+    result = obj.save()
+    assert result.saved
+    assert not result.created
+    assert result.updated
+    assert result.field_names == {"one"}
+    assert not result.forced
+    mock_update.assert_called_once_with(obj.id, {"one": "new value"}, typecast=True)
+
+
+@mock.patch("pyairtable.Table.update")
+def test_save__update_force(mock_update):
+    """
+    Test that we can save a model instance that already exists,
+    and we can force saving all values to the API.
+    """
+    obj = FakeModel.from_record(fake_record(one="ONE", two="TWO"))
+    obj.one = "new value"
+    result = obj.save(force=True)
+    assert result.saved
+    assert not result.created
+    assert result.updated
+    assert result.forced
+    assert result.field_names == {"one", "two"}
+    mock_update.assert_called_once_with(
+        obj.id, {"one": "new value", "two": "TWO"}, typecast=True
+    )
+
+
+@mock.patch("pyairtable.Table.update")
+def test_save__noop(mock_update):
+    """
+    Test that if a model is unchanged, we don't try to save it to the API.
+    """
+    obj = FakeModel.from_record(fake_record(one="ONE", two="TWO"))
+    result = obj.save()
+    assert not result.saved
+    assert not result.created
+    assert not result.updated
+    assert not result.field_names
+    assert not result.forced
+    mock_update.assert_not_called()
+
+
+def test_save_bool_deprecated():
+    """
+    Test that SaveResult instances can be used as booleans, but emit a deprecation warning.
+    """
+    with pytest.deprecated_call():
+        assert bool(SaveResult(fake_id(), created=False)) is False
+
+    with pytest.deprecated_call():
+        assert bool(SaveResult(fake_id(), created=True)) is True

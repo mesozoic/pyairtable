@@ -39,11 +39,14 @@ def test_date_utils(date_obj, date_str):
 
 
 def test_attachment():
-    assert utils.attachment("https://url.com") == {"url": "https://url.com"}
-    assert utils.attachment("https://url.com", filename="test.jpg") == {
-        "url": "https://url.com",
-        "filename": "test.jpg",
-    }
+    with pytest.deprecated_call():
+        assert utils.attachment("https://url.com") == {"url": "https://url.com"}
+
+    with pytest.deprecated_call():
+        assert utils.attachment("https://url.com", filename="test.jpg") == {
+            "url": "https://url.com",
+            "filename": "test.jpg",
+        }
 
 
 @pytest.mark.parametrize(
@@ -116,9 +119,15 @@ def test_url():
     v = utils.Url("https://example.com")
     assert v == "https://example.com"
     assert v / "foo/bar" / "baz" == "https://example.com/foo/bar/baz"
-    assert v / "foo" & {"a": 1, "b": [2, 3]} == "https://example.com/foo?a=1&b=2&b=3"
     assert v // [1, 2, "a", "b"] == "https://example.com/1/2/a/b"
-    assert v.add_qs(a=1, b=[2, 3, 4]) == "https://example.com?a=1&b=2&b=3&b=4"
+    assert v & {"a": 1, "b": [2, 3, 4]} == "https://example.com?a=1&b=2&b=3&b=4"
+    assert v.add_path(1, 2, "a", "b") == "https://example.com/1/2/a/b"
+    assert v.add_qs({"a": 1}, b=[2, 3, 4]) == "https://example.com?a=1&b=2&b=3&b=4"
+
+    with pytest.raises(TypeError):
+        v.add_path()
+    with pytest.raises(TypeError):
+        v.add_qs()
 
 
 def test_url_cannot_append_after_params():
