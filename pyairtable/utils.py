@@ -187,8 +187,9 @@ def enterprise_only(wrapped: F, /, modify_docstring: bool = True) -> F:
     return _decorated  # type: ignore[return-value]
 
 
-def _prepend_docstring_text(obj: Any, text: str) -> None:
-    if not (doc := obj.__doc__):
+def _prepend_docstring_text(obj: Any, text: str, *, skip_empty: bool = True) -> None:
+    doc = obj.__doc__ or ""
+    if skip_empty and not doc:
         return
     doc = doc.lstrip("\n")
     if has_leading_spaces := re.match(r"^\s+", doc):
@@ -196,8 +197,9 @@ def _prepend_docstring_text(obj: Any, text: str) -> None:
     obj.__doc__ = f"{text}\n\n{doc}"
 
 
-def _append_docstring_text(obj: Any, text: str) -> None:
-    if not (doc := obj.__doc__):
+def _append_docstring_text(obj: Any, text: str, *, skip_empty: bool = True) -> None:
+    doc = obj.__doc__ or ""
+    if skip_empty and not doc:
         return
     doc = doc.rstrip("\n")
     if has_leading_spaces := re.match(r"^\s+", doc):
@@ -270,18 +272,16 @@ def coerce_list_str(value: Optional[Union[str, Iterable[str]]]) -> List[str]:
 
 class Url(str):
     """
-    Silly wrapper around ``str`` that adds Path-like syntax for extending
+    Wrapper for ``str`` that adds Path-like syntax for extending
     URL components and adding query params.
 
-    >>> u = Url('http://example.com')
-    >>> u
+    >>> url = Url('http://example.com')
+    >>> url
     'http://example.com'
-    >>> u / 'foo' & {'a': 1, 'b': [2, 3, 4]}
+    >>> url / 'foo' & {'a': 1, 'b': [2, 3, 4]}
     'http://example.com/foo?a=1&b=2&b=3&b=4'
-    >>> u // [1, 2, 3, 4]
+    >>> url // [1, 2, 3, 4]
     'http://example.com/1/2/3/4'
-    >>> u.add_qs(a=1, b=[2,3,4])
-    'http://example.com?a=1&b=2&b=3&b=4'
     """
 
     def parse(self) -> urllib.parse.ParseResult:
@@ -302,6 +302,18 @@ class Url(str):
     def add_path(self, *others: Iterable[Any]) -> "Url":
         """
         Build a copy of this URL with additional path segments.
+
+        >>> url = Url('http://example.com')
+        >>> url.add_path("a", "b", "c")
+        'http://example.com/a/b/c'
+
+        The shorthand ``/`` has the same effect and can be used with a single path segment.
+        The shorthand ``//`` can be used with an iterable of path segments.
+
+        >>> url / "a" / "b" / "c"
+        'http://example.com/a/b/c'
+        >>> url // ["a", "b", "c"]
+        'http://example.com/a/b/c'
         """
         if not others:
             raise TypeError("add_path() requires at least one argument")
@@ -321,6 +333,13 @@ class Url(str):
     ) -> "Url":
         """
         Build a copy of this URL with additional query parameters.
+        The shorthand ``&`` has the same effect.
+
+        >>> url = Url('http://example.com')
+        >>> url.add_qs({"a": 1}, b=[2, 3, 4])
+        'http://example.com?a=1&b=2&b=3&b=4'
+        >>> url & {"a": 1, "b": [2, 3, 4]}
+        'http://example.com?a=1&b=2&b=3&b=4'
         """
         if not (params or other_params):
             raise TypeError("add_qs() requires at least one argument")
@@ -340,8 +359,25 @@ class UrlBuilder:
     and modify them to reflect the actual URL that should be used
     based on the context (Table, Base, etc.) provided.
 
-    This is distinct from the way ``RestfulModel`` generates its URLs,
-    as the "standard" resources (Base, Table, etc.) are not RESTful.
+    The pattern for use in pyAirtable is:
+
+    .. code-block:: python
+
+        from functools import cached_property
+        from pyairtable.utils import UrlBuilder
+
+        class SomeObject:
+            attr1: str
+            attr2: int
+
+            class _urls(UrlBuilder):
+                url1 = "/path/to/{attr1}"
+                url2 = "/path/to/{attr2}"
+
+            urls = cached_property(_urls)
+
+    ...which ensures the URLs are built only once and are accessible via ``.urls``,
+    and have the ``SomeObject`` instance available as context.
     """
 
     def __init__(self, context: Any = None):
@@ -355,13 +391,57 @@ class UrlBuilder:
                 value = value.format_map({**vars(context), "self": context})
             setattr(self, attr, api.build_url(value))
 
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        # This is a special case for pyAirtable use cases only, where we
+        # subclass UrlBuilder within the definition of the class that uses it.
+        #
+        # We dynamically add a docstring to each subclass explaining its use,
+        # and we rely on Sphinx to document the cached_property, not the class.
+        #
+        # Will be skipped if either of the following is true:
+        #  1) The subclass of UrlBuilder is not nested inside another class
+        #  2) The subclass is passed skip_docstring=True
+        #
+        if "." not in cls.__qualname__ or kwargs.pop("skip_docstring", False):
+            return super().__init_subclass__(**kwargs)
+        try:
+            sample_url = next(k for (k, v) in vars(cls).items() if isinstance(v, Url))
+        except StopIteration:
+            return  # if no URLs defined, don't do anything
+
+        parent_clsname = cls.__qualname__.split(".")[0]
+        parent_varname = parent_clsname.lower()
+        docstring = (
+            f"URLs associated with :class:`~{cls.__module__}.{parent_clsname}`"
+            " can be accessed via ``.urls`` using the following syntax:\n\n"
+            ".. code-block:: python\n\n"
+            f"""
+            >>> {parent_varname} = {parent_clsname}(...)
+            >>> {parent_varname}.urls.{sample_url}
+            'https://api.airtable.com/...'
+            >>> type({parent_varname}.urls.{sample_url})
+            <class 'pyairtable.utils.Url'>
+            """
+            "\n\nThese properties are all instances of :class:`~pyairtable.utils.Url`."
+        )
+        for name, obj in vars(cls).items():
+            qualname = f"{cls.__module__}.{cls.__qualname__}.{name}"
+            if isinstance(obj, Url):
+                docstring += f"\n\n.. autoattribute:: {qualname}\n    :noindex:"
+            elif callable(obj):
+                docstring += f"\n\n.. automethod:: {qualname}\n    :noindex:"
+
+        _append_docstring_text(cls, docstring, skip_empty=False)
+
     @classmethod
     def _find_api(self, context: Any) -> "Api":
         from pyairtable.api.api import Api  # avoid circular import
 
         if isinstance(context, Api):
             return context
-        return cast(Api, context.api)
+        if isinstance(api := getattr(context, "api", None), Api):
+            return api
+        raise TypeError("context must be an instance of Api or have an 'api' attribute")
 
 
 __all__ = [

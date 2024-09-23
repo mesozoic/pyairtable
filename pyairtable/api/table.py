@@ -26,18 +26,6 @@ from pyairtable.models.schema import FieldSchema, TableSchema, parse_field_schem
 from pyairtable.utils import Url, UrlBuilder, is_table_id
 
 
-class _TableUrls(UrlBuilder):
-    records = Url("{base.id}/{self.id_or_name}")
-    records_post = records / "listRecords"
-    fields = Url("meta/bases/{base.id}/tables/{self.id_or_name}/fields")
-
-    def record(self, record_id: RecordId) -> Url:
-        return self.records / record_id
-
-    def record_comments(self, record_id: RecordId) -> Url:
-        return self.record(record_id) / "comments"
-
-
 class Table:
     """
     Represents an Airtable table.
@@ -57,7 +45,28 @@ class Table:
     # Cached schema information to reduce API calls
     _schema: Optional[TableSchema] = None
 
-    urls = cached_property(_TableUrls)
+    class _urls(UrlBuilder):
+        #: URL for retrieving all records in the table
+        records = Url("{base.id}/{self.id_or_name}")
+
+        #: URL for retrieving all records in the table via POST,
+        #: when the request is too large to fit into GET parameters.
+        records_post = records / "listRecords"
+        fields = Url("meta/bases/{base.id}/tables/{self.id_or_name}/fields")
+
+        def record(self, record_id: RecordId) -> Url:
+            """
+            URL for a specific record in the table.
+            """
+            return self.records / record_id
+
+        def record_comments(self, record_id: RecordId) -> Url:
+            """
+            URL for comments on a specific record in the table.
+            """
+            return self.record(record_id) / "comments"
+
+    urls = cached_property(_urls)
 
     @overload
     def __init__(

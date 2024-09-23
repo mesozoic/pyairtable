@@ -115,6 +115,12 @@ def test_url_builder(base):
     assert urls._ignored == "ignored"
 
 
+@pytest.mark.parametrize("obj", [None, object(), {"api": object()}])
+def test_url_builder__invalid_context(obj):
+    with pytest.raises(TypeError):
+        utils.UrlBuilder(obj)
+
+
 def test_url():
     v = utils.Url("https://example.com")
     assert v == "https://example.com"

@@ -14,18 +14,6 @@ from pyairtable.models.webhook import (
 from pyairtable.utils import Url, UrlBuilder, cache_unless_forced, enterprise_only
 
 
-class _BaseUrls(UrlBuilder):
-    meta = Url("meta/bases/{id}")
-    interfaces = meta / "interfaces"
-    shares = meta / "shares"
-    tables = meta / "tables"
-    collaborators = meta / "collaborators"
-    webhooks = Url("bases/{id}/webhooks")
-
-    def interface(self, interface_id: str) -> Url:
-        return self.interfaces / interface_id
-
-
 class Base:
     """
     Represents an Airtable base.
@@ -45,12 +33,37 @@ class Base:
     #: The permission level the current user has on the base
     permission_level: Optional[str]
 
-    urls = cached_property(_BaseUrls)
-
     # Cached metadata to reduce API calls
     _collaborators: Optional[BaseCollaborators] = None
     _schema: Optional[BaseSchema] = None
     _shares: Optional[List[BaseShares.Info]] = None
+
+    class _urls(UrlBuilder):
+        #: URL for retrieving the base's metadata and collaborators.
+        meta = Url("meta/bases/{id}")
+
+        #: URL for retrieving information about the base's interfaces.
+        interfaces = meta / "interfaces"
+
+        #: URL for retrieving the base's shares.
+        shares = meta / "shares"
+
+        #: URL for retrieving the base's schema.
+        tables = meta / "tables"
+
+        #: URL for POST requests that modify collaborations on the base.
+        collaborators = meta / "collaborators"
+
+        #: URL for retrieving or modifying the base's webhooks.
+        webhooks = Url("bases/{id}/webhooks")
+
+        def interface(self, interface_id: str) -> Url:
+            """
+            URL for retrieving information about a specific interface on the base.
+            """
+            return self.interfaces / interface_id
+
+    urls = cached_property(_urls)
 
     def __init__(
         self,

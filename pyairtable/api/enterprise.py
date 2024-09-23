@@ -16,26 +16,6 @@ from pyairtable.utils import (
 )
 
 
-class _EnterpriseUrls(UrlBuilder):
-    meta = Url("meta/enterpriseAccounts/{id}")
-    users = meta / "users"
-    groups = Url("meta/groups")
-    claim_users = meta / "claim/users"
-    audit_log = meta / "auditLogEvents"
-
-    def user(self, user_id: str) -> Url:
-        return self.users / user_id
-
-    def group(self, group_id: str) -> Url:
-        return self.groups / group_id
-
-    def admin_access(self, action: str) -> Url:
-        return self.meta / f"users/{action}AdminAccess"
-
-    grant_admin = partialmethod(admin_access, "grant")
-    revoke_admin = partialmethod(admin_access, "revoke")
-
-
 @enterprise_only
 class Enterprise:
     """
@@ -46,7 +26,47 @@ class Enterprise:
     ['wspmhESAta6clCCwF', ...]
     """
 
-    urls = cached_property(_EnterpriseUrls)
+    class _urls(UrlBuilder):
+        #: URL for retrieving basic information about the enterprise.
+        meta = Url("meta/enterpriseAccounts/{id}")
+
+        #: URL for retrieving information about all users.
+        users = meta / "users"
+
+        #: URL for retrieving information about all user groups.
+        groups = Url("meta/groups")
+
+        #: URL for claiming a user into an enterprise.
+        claim_users = meta / "claim/users"
+
+        #: URL for retrieving audit log events.
+        audit_log = meta / "auditLogEvents"
+
+        def user(self, user_id: str) -> Url:
+            """
+            URL for retrieving information about a single user.
+            """
+            return self.users / user_id
+
+        def group(self, group_id: str) -> Url:
+            """
+            URL for retrieving information about a single user group.
+            """
+            return self.groups / group_id
+
+        def admin_access(self, action: Literal["grant", "revoke"]) -> Url:
+            """
+            URL for granting or revoking admin access to one or more users.
+            """
+            return self.meta / f"users/{action}AdminAccess"
+
+        #: URL for granting admin access to one or more users.
+        grant_admin = partialmethod(admin_access, "grant")
+
+        #: URL for revoking admin access from one or more users.
+        revoke_admin = partialmethod(admin_access, "revoke")
+
+    urls = cached_property(_urls)
 
     def __init__(self, api: "pyairtable.api.api.Api", workspace_id: str):
         self.api = api
@@ -329,7 +349,7 @@ class Enterprise:
         return self._post_admin_access("revoke", users)
 
     def _post_admin_access(
-        self, action: str, users: Iterable[Union[str, UserInfo]]
+        self, action: Literal["grant", "revoke"], users: Iterable[Union[str, UserInfo]]
     ) -> "ManageUsersResponse":
         response = self.api.post(
             self.urls.admin_access(action),
