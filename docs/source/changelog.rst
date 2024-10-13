@@ -46,7 +46,11 @@ Changelog
 * Added support for `Upload attachment <https://airtable.com/developers/web/api/upload-attachment>`_
   via :meth:`Table.upload_attachment <pyairtable.Table.upload_attachment>`
   or :meth:`AttachmentsList.upload <pyairtable.orm.lists.AttachmentsList.upload>`.
+  - `PR #389 <https://github.com/gtalarico/pyairtable/pull/389>`_
+* Added :class:`pyairtable.testing.MockAirtable` for easier testing.
+  - `PR #388 <https://github.com/gtalarico/pyairtable/pull/388>`_
 * Refactored methods/properties for constructing URLs in the API.
+  - `PR #390 <https://github.com/gtalarico/pyairtable/pull/390>`_
 
 2.3.3 (2024-03-22)
 ------------------------
