@@ -1,6 +1,8 @@
 import re
 from unittest.mock import ANY
 
+import pytest
+
 from pyairtable import testing as T
 
 
@@ -82,9 +84,29 @@ def test_coerce_fake_record():
         "createdTime": ANY,
         "fields": {"Name": "Alice"},
     }
-    assert T.coerce_fake_record({"id": "rec123", "fields": {"Name": "Alice"}}) == {
+    assert T.coerce_fake_record({"id": "rec123", "fields": {"Name": "Carol"}}) == {
         "id": "rec123",
         "createdTime": ANY,
-        "fields": {"Name": "Alice"},
+        "fields": {"Name": "Carol"},
     }
     assert T.coerce_fake_record(fake := T.fake_record()) == fake
+
+
+def test_coerce_fake_records():
+    assert T.coerce_fake_records(
+        [
+            {"Name": "Alice"},
+            {"fields": {"Name": "Bob"}},
+            {"id": "rec123", "fields": {"Name": "Carol"}},
+        ]
+    ) == [
+        {"id": ANY, "createdTime": ANY, "fields": {"Name": "Alice"}},
+        {"id": ANY, "createdTime": ANY, "fields": {"Name": "Bob"}},
+        {"id": "rec123", "createdTime": ANY, "fields": {"Name": "Carol"}},
+    ]
+    assert T.coerce_fake_records(rec1={"Name": "Alice"}, rec2={"Name": "Bob"}) == [
+        {"id": "rec1", "createdTime": ANY, "fields": {"Name": "Alice"}},
+        {"id": "rec2", "createdTime": ANY, "fields": {"Name": "Bob"}},
+    ]
+    with pytest.raises(ValueError):
+        T.coerce_fake_records()

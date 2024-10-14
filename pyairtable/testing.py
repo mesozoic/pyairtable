@@ -578,6 +578,36 @@ def coerce_fake_record(record: Union[AnyRecordDict, Fields]) -> RecordDict:
     }
 
 
+def coerce_fake_records(
+    records: Optional[Iterable[Union[AnyRecordDict, Fields]]] = None,
+    **fields_by_id: Fields,
+) -> List[RecordDict]:
+    """
+    Coerce a sequence of record dicts or field mappings to the expected format
+    for Airtable records, creating fake IDs and createdTimes if necessary.
+
+    >>> coerce_fake_records([{"Name": "Alice"}, {"Name": "Bob"}])
+    [
+        {'id': 'rec000...', 'createdTime': '...', 'fields': {'Name': 'Alice'}},
+        {'id': 'rec000...', 'createdTime': '...', 'fields': {'Name': 'Bob'}}
+    ]
+
+    If kwargs are supplied, they are interpreted as mappings of record IDs
+    to field values, and the IDs will be used as-is.
+
+    >>> coerce_fake_records(rec1={"Name": "Alice"}, rec2={"Name": "Bob"})
+    [
+        {'id': 'rec1', 'createdTime': '...', 'fields': {'Name': 'Alice'}},
+        {'id': 'rec2', 'createdTime': '...', 'fields': {'Name': 'Bob'}}
+    ]
+    """
+    if not (records or fields_by_id):
+        raise ValueError("expected at least one record or keyword argument")
+    records = [] if records is None else list(records)
+    records.extend({"id": k, "fields": v} for (k, v) in fields_by_id.items())
+    return [coerce_fake_record(record) for record in records]
+
+
 def _extract_args(
     args: Sequence[Any],
     kwargs: Dict[str, Any],
