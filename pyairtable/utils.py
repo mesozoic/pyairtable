@@ -442,16 +442,22 @@ class UrlBuilder:
     readable docstrings for the ``SomeObject`` class documentation.
     """
 
+    context: Any
+    api: "Api"
+
     def __init__(self, context: Any = None):
-        api = self._find_api(context)
+        self.context = context
+        self.api = self._find_api(context)
         for attr, value in vars(self.__class__).items():
-            if attr.startswith("_"):
+            if attr.startswith("_") or not isinstance(value, str):
                 continue
-            if not isinstance(value, str):
-                continue
-            if "{" in value:
-                value = value.format_map({**vars(context), "self": context})
-            setattr(self, attr, api.build_url(value))
+            setattr(self, attr, self.build_url(value))
+
+    def build_url(self, value: str, **kwargs: Any) -> Url:
+        if "{" in value:
+            context = {**vars(self.context), **kwargs, "self": self.context}
+            value = value.format_map(context)
+        return self.api.build_url(value)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         # This is a special case for pyAirtable use cases only, where we

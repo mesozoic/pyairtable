@@ -66,6 +66,13 @@ class Table:
             """
             return self.record(record_id) / "comments"
 
+        def upload_attachment(self, record_id: RecordId, field: str) -> Url:
+            """
+            URL for uploading an attachment to a specific field in a specific record.
+            """
+            url = self.build_url(f"{{base.id}}/{record_id}/{field}/uploadAttachment")
+            return url.replace_url(netloc="content.airtable.com")
+
     urls = cached_property(_urls)
 
     @overload
@@ -785,7 +792,7 @@ class Table:
                 content_type = "application/octet-stream"
 
         # TODO: figure out how to handle the atypical subdomain in a more graceful fashion
-        url = f"https://content.airtable.com/v0/{self.base.id}/{record_id}/{field}/uploadAttachment"
+        url = self.urls.upload_attachment(record_id, field)
         content = content.encode() if isinstance(content, str) else content
         payload = {
             "contentType": content_type,
