@@ -24,11 +24,6 @@ T = TypeVar("T")
 TimeoutTuple: TypeAlias = Tuple[int, int]
 
 
-class _ApiUrls(UrlBuilder):
-    whoami = Url("meta/whoami")
-    bases = Url("meta/bases")
-
-
 class Api:
     """
     Represents an Airtable API. Implements basic URL construction,
@@ -52,10 +47,15 @@ class Api:
     # Cached metadata to reduce API calls
     _bases: Optional[Dict[str, "pyairtable.api.base.Base"]] = None
 
-    urls = cached_property(_ApiUrls)
     endpoint_url: Url
     session: Session
     use_field_ids: bool
+
+    class _urls(UrlBuilder):
+        whoami = Url("meta/whoami")
+        bases = Url("meta/bases")
+
+    urls = cached_property(_urls)
 
     def __init__(
         self,
