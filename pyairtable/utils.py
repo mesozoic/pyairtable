@@ -22,7 +22,7 @@ from typing import (
 )
 
 import requests
-from typing_extensions import ParamSpec, Protocol
+from typing_extensions import ParamSpec, Protocol, Self
 
 from pyairtable.api.types import AnyRecordDict, CreateAttachmentByUrl, FieldValue
 
@@ -327,79 +327,90 @@ class Url(str):
 
     >>> url = Url('http://example.com')
     >>> url
-    'http://example.com'
+    Url('http://example.com')
     >>> url / 'foo' & {'a': 1, 'b': [2, 3, 4]}
-    'http://example.com/foo?a=1&b=2&b=3&b=4'
+    Url('http://example.com/foo?a=1&b=2&b=3&b=4')
     >>> url // [1, 2, 3, 4]
-    'http://example.com/1/2/3/4'
+    Url('http://example.com/1/2/3/4')
     """
 
-    def parse(self) -> urllib.parse.ParseResult:
+    def _parse(self) -> urllib.parse.ParseResult:
         """
         Shortcut for `urllib.parse.urlparse <https://docs.python.org/3/library/urllib.parse.html#urllib.parse.urlparse>`_.
         """
         return urllib.parse.urlparse(self)
 
-    def __truediv__(self, other: Any) -> "Url":
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({super().__repr__()})"
+
+    def __truediv__(self, other: Any) -> Self:
         return self.add_path(other)
 
-    def __floordiv__(self, others: Iterable[Any]) -> "Url":
+    def __floordiv__(self, others: Iterable[Any]) -> Self:
         return self.add_path(*others)
 
-    def __and__(self, params: Dict[str, Any]) -> "Url":
+    def __and__(self, params: Dict[str, Any]) -> Self:
         return self.add_qs(params)
 
-    def add_path(self, *others: Iterable[Any]) -> "Url":
+    def add_path(self, *others: Iterable[Any]) -> Self:
         """
         Build a copy of this URL with additional path segments.
 
         >>> url = Url('http://example.com')
         >>> url.add_path("a", "b", "c")
-        'http://example.com/a/b/c'
+        Url('http://example.com/a/b/c')
 
         The shorthand ``/`` has the same effect and can be used with a single path segment.
         The shorthand ``//`` can be used with an iterable of path segments.
 
         >>> url / "a" / "b" / "c"
-        'http://example.com/a/b/c'
+        Url('http://example.com/a/b/c')
         >>> url // ["a", "b", "c"]
-        'http://example.com/a/b/c'
+        Url('http://example.com/a/b/c')
         """
         if not others:
             raise TypeError("add_path() requires at least one argument")
-        parsed = self.parse()
+        parsed = self._parse()
         if parsed.query:
             raise ValueError("cannot add path segments after params")
         parts = [str(other) for other in others]
         if parsed.path:
             parts.insert(0, parsed.path.rstrip("/"))
-        new = parsed._replace(path="/".join(parts))
-        return Url(urllib.parse.urlunparse(new))
+        return self.replace_url(path="/".join(parts))
 
     def add_qs(
         self,
         params: Optional[Dict[str, Any]] = None,
         **other_params: Any,
-    ) -> "Url":
+    ) -> Self:
         """
         Build a copy of this URL with additional query parameters.
         The shorthand ``&`` has the same effect.
 
         >>> url = Url('http://example.com')
         >>> url.add_qs({"a": 1}, b=[2, 3, 4])
-        'http://example.com?a=1&b=2&b=3&b=4'
+        Url('http://example.com?a=1&b=2&b=3&b=4')
         >>> url & {"a": 1, "b": [2, 3, 4]}
-        'http://example.com?a=1&b=2&b=3&b=4'
+        Url('http://example.com?a=1&b=2&b=3&b=4')
         """
         if not (params or other_params):
             raise TypeError("add_qs() requires at least one argument")
         params = {} if params is None else params
         params.update(other_params)
-        parsed = self.parse()
+        parsed = self._parse()
         qs = urllib.parse.parse_qs(parsed.query)
         qs.update(params)
-        new = parsed._replace(query=urllib.parse.urlencode(qs, doseq=True))
-        return Url(urllib.parse.urlunparse(new))
+        return self.replace_url(query=urllib.parse.urlencode(qs, doseq=True))
+
+    def replace_url(self, **kwargs: Any) -> Self:
+        """
+        Build a copy of this URL with the given components replaced.
+
+        >>> url = Url('http://example.com')
+        >>> url.replace(scheme='https', path='/foo')
+        Url('https://example.com/foo')
+        """
+        return self.__class__(urllib.parse.urlunparse(self._parse()._replace(**kwargs)))
 
 
 class UrlBuilder:
@@ -470,9 +481,7 @@ class UrlBuilder:
             f"""
             >>> {parent_varname} = {parent_clsname}(...)
             >>> {parent_varname}.urls.{sample_url}
-            'https://api.airtable.com/...'
-            >>> type({parent_varname}.urls.{sample_url})
-            <class 'pyairtable.utils.Url'>
+            Url('https://api.airtable.com/...')
             """
             "\n\nThese properties are all instances of :class:`~pyairtable.utils.Url`."
         )

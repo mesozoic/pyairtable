@@ -187,6 +187,23 @@ def test_url():
         v.add_qs()
 
 
+def test_url__parse():
+    v = utils.Url("https://example.com:443/asdf?a=1&b=2&b=3#foo")
+    parsed = v._parse()
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "example.com:443"
+    assert parsed.path == "/asdf"
+    assert parsed.query == "a=1&b=2&b=3"
+    assert parsed.fragment == "foo"
+    assert parsed.hostname == "example.com"
+    assert parsed.port == 443
+
+
+def test_url__replace():
+    v = utils.Url("https://example.com:443/asdf?a=1&b=2&b=3#foo")
+    assert v.replace_url(netloc="foo.com") == "https://foo.com/asdf?a=1&b=2&b=3#foo"
+
+
 def test_url_cannot_append_after_params():
     # cannot add path segments after params
     v = utils.Url("https://example.com?a=1&b=2")
