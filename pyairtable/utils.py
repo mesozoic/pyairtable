@@ -460,22 +460,20 @@ class UrlBuilder:
         return self.api.build_url(value)
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        # This is a special case for pyAirtable use cases only, where we
+        # This is a documentation hack for pyAirtable use cases only, where we
         # subclass UrlBuilder within the definition of the class that uses it.
         #
         # We dynamically add a docstring to each subclass explaining its use,
         # and we rely on Sphinx to document the cached_property, not the class.
         #
-        # Will be skipped if either of the following is true:
-        #  1) The subclass of UrlBuilder is not nested inside another class
-        #  2) The subclass is passed skip_docstring=True
-        #
+        # Will be skipped if the subclass is passed skip_docstring=True.
         if "." not in cls.__qualname__ or kwargs.pop("skip_docstring", False):
             return super().__init_subclass__(**kwargs)
         try:
             sample_url = next(k for (k, v) in vars(cls).items() if isinstance(v, Url))
         except StopIteration:
-            return  # if no URLs defined, don't do anything
+            # if no URLs defined, don't do anything
+            return super().__init_subclass__(**kwargs)
 
         parent_clsname = cls.__qualname__.rsplit(".", 1)[0]
         parent_modname = cls.__module__

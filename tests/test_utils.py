@@ -172,6 +172,28 @@ def test_url_builder__invalid_context(obj):
         utils.UrlBuilder(obj)
 
 
+def test_url_builder__modifies_docstring():
+    """
+    This test is a bit meta, but it ensures that anyone else who wants to use UrlBuilder
+    can skip docstring creation by passing skip_docstring=True
+    """
+
+    class NormalBehavior(utils.UrlBuilder):
+        test = utils.Url("https://example.com")
+
+    class MissingDocstring(utils.UrlBuilder, skip_docstring=True):
+        test = utils.Url("https://example.com")
+
+    class ExistingDocstring(utils.UrlBuilder, skip_docstring=True):
+        """This is the docstring."""
+
+        test = utils.Url("https://example.com")
+
+    assert "URLs associated with :class:" in NormalBehavior.__doc__
+    assert MissingDocstring.__doc__ is None
+    assert ExistingDocstring.__doc__ == "This is the docstring."
+
+
 def test_url():
     v = utils.Url("https://example.com")
     assert v == "https://example.com"
