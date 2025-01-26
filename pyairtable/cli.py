@@ -2,14 +2,28 @@
 pyAirtable exposes a command-line interface that allows you to interact with the API.
 """
 
+import dataclasses
 import functools
 import json
 import os
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterator, Optional, Sequence, Tuple, Union
+from datetime import date, datetime, timezone
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    Hashable,
+    Iterator,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
 
 from click import Context, HelpFormatter
 from typing_extensions import ParamSpec, TypeVar
@@ -18,7 +32,9 @@ from pyairtable.api.api import Api
 from pyairtable.api.base import Base
 from pyairtable.api.enterprise import Enterprise
 from pyairtable.api.table import Table
+from pyairtable.api.workspace import Workspace
 from pyairtable.models._base import AirtableModel
+from pyairtable.models.schema import UserInfo
 from pyairtable.orm.generate import ModelFileBuilder
 from pyairtable.utils import chunked, is_table_id
 
@@ -41,13 +57,29 @@ F = TypeVar("F", bound=Callable[..., Any])
 P = ParamSpec("P")
 
 
+class ContextProperty(property, Generic[T]):
+    def __get__(self, obj: "CliContext", objtype=None) -> T:
+        try:
+            return obj._values[self.__name__]
+        except KeyError:
+            raise RuntimeError(f"{self.__name__} not set; please report a bug")
+
+    def __set__(self, obj: "CliContext", value: T) -> None:
+        super().__set__(obj, value)
+
+
 @dataclass
 class CliContext:
-    access_token: str = ""
-    base_id: str = ""
-    table_id_or_name: str = ""
-    enterprise_id: str = ""
-    click_context: Optional["click.Context"] = None
+    _values: Dict[Hashable, Any] = dataclasses.field(default_factory=dict)
+
+    click = ContextProperty[click.Context]()
+    access_token = ContextProperty[str]()
+    base_id = ContextProperty[str]()
+    table_id_or_name = ContextProperty[str]()
+    enterprise_id = ContextProperty[str]()
+    workspace_id = ContextProperty[str]()
+    user_id = ContextProperty[str]()
+    group_id = ContextProperty[str]()
 
     @functools.cached_property
     def api(self) -> Api:
@@ -65,10 +97,13 @@ class CliContext:
     def enterprise(self) -> Enterprise:
         return self.api.enterprise(self.enterprise_id)
 
-    @property
-    def click(self) -> click.Context:
-        assert self.click_context is not None
-        return self.click_context
+    @functools.cached_property
+    def workspace(self) -> Workspace:
+        return self.api.workspace(self.workspace_id)
+
+    @functools.cached_property
+    def user(self) -> UserInfo:
+        return self.enterprise.user(self.user_id)
 
     def default_subcommand(self, cmd: F) -> None:
         if not self.click.invoked_subcommand:
@@ -80,7 +115,7 @@ def needs_context(func: Callable[P, T]) -> Callable[P, T]:
     @click.pass_context
     def _wrapped(click_ctx: click.Context, /, *args: P.args, **kwargs: P.kwargs) -> T:
         obj = click_ctx.ensure_object(CliContext)
-        obj.click_context = click_ctx
+        obj.click = click_ctx
         return click_ctx.invoke(func, obj, *args, **kwargs)
 
     return _wrapped
@@ -380,10 +415,19 @@ def enterprise_groups(
     )
 
 
+@cli.group("workspace", invoke_without_command=True, cls=ShortcutGroup)
+@click.argument("workspace_id")
+@needs_context
+def workspace(ctx: CliContext, workspace_id: str) -> None:
+    ctx.workspace_id = workspace_id
+
+
 class JSONEncoder(json.JSONEncoder):
     def default(self, o: Any) -> Any:
         if isinstance(o, AirtableModel):
             return o._raw
+        if isinstance(o, (date, datetime)):
+            return o.isoformat()
         return super().default(o)  # pragma: no cover
 
 

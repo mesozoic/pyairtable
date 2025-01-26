@@ -38,3 +38,21 @@ class UnsavedRecordError(PyAirtableError, ValueError):
     """
     Attempted to perform an unsupported operation on an unsaved record.
     """
+
+
+class NotFound(PyAirtableError, KeyError):
+    """
+    Raised when an object is not found in the API.
+    """
+
+
+class RecordNotFound(NotFound):
+    """
+    A record with the given ID was not found.
+    """
+
+
+class UserNotFound(NotFound):
+    """
+    A user with the given ID was not found.
+    """

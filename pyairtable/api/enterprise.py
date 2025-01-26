@@ -3,6 +3,7 @@ from typing import Any, Dict, Iterable, Iterator, List, Literal, Optional, Union
 
 import pydantic
 
+from pyairtable.exceptions import UserNotFound
 from pyairtable.models._base import AirtableModel, rebuild_models
 from pyairtable.models.audit import AuditLogResponse
 from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
@@ -96,13 +97,20 @@ class Enterprise:
                 "include": ["collaborations"] if collaborations else [],
             },
         )
-        # key by user ID to avoid returning duplicates
-        users = {
-            info.id: info
+        users = [
+            UserInfo.from_api(user_obj, self.api, context=self)
             for user_obj in response["users"]
-            if (info := UserInfo.from_api(user_obj, self.api, context=self))
-        }
-        return list(users.values())
+        ]
+
+        # ensure every input had a corresponding user
+        keys = {key for user in users for key in (user.id, user.email)}
+        for id_or_email in ids_or_emails:
+            if id_or_email not in keys:
+                raise UserNotFound(id_or_email)
+
+        # avoid returning duplicates
+        users_by_id = {user.id: user for user in users}
+        return list(users_by_id.values())
 
     def audit_log(
         self,
