@@ -25,6 +25,7 @@ extensions = [
     # "autoapi.extension",
     "sphinx_autodoc_typehints",
     "sphinxcontrib.autodoc_pydantic",
+    "sphinxcontrib.gtagjs",
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -120,19 +121,12 @@ napoleon_attr_annotations = True
 # napoleon_attr_annotations = True
 # napoleon_use_param = True
 
-__version__ = version.split("-", 0)
-__release__ = version
-
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
 # built documents.
-#
-# The short X.Y version.
-# version = '0.2.0.dev1'
-# The full version, including alpha/beta/rc tags.
-# release = '0.2.0.dev1'
 
-html_theme = "revitron_sphinx_theme"
+__version__ = version.split("-", 0)
+__release__ = version
 
 ################################
 # CUSTOM
@@ -166,45 +160,28 @@ pygments_style = "monokai"
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
+gtagjs_ids = [
+    "UA-3836052-10",
+]
 
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
 # a list of builtin themes.
-#
-# html_theme = 'alabaster'
+html_theme = "furo"
+html_title = "pyAirtable documentation"
 
 # Theme options are theme-specific and customize the look and feel of a theme
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
-html_theme_options = {
-    # "color_scheme": "",
-    # "canonical_url": "",
-    "analytics_id": "UA-3836052-10",
-    # "style_external_links": False,
-    # "collapse_navigation": True,
-    # "sticky_navigation": True,
-    # "navigation_depth": 4,
-    # "includehidden": True,
-    # "titles_only": False,
-    "github_url": "https://github.com/gtalarico/pyairtable",
-    # 'logo_mobile': 'demo/static/logo-mobile.svg'
-    # "logo_mobile": "_static/logo.png",
-}
+html_theme_options = {}
 
 # html_logo = 'demo/static/logo.svg'
 html_logo = "_static/logo-text.svg"
 
 html_context = {
-    "landing_page": {
-        "menu": [
-            # {"title": "Airtable Api Docs", "url": "https://airtable.com/api"},
-            # {"title": "♡ Sponsor", "url": "https://github.com/sponsors/gtalarico"},
-        ]
-    },
-    "docs_source_path": "main/docs/source",
+    "theme_sidebar_hide_name": True,
 }
 
 # Add any paths that contain custom static files (such as style sheets) here,
