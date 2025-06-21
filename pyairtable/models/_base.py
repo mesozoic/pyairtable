@@ -239,12 +239,14 @@ class CanUpdateModel(RestfulModel):
                 cls,
                 "The following fields can be modified and saved: "
                 + ", ".join(f"``{field}``" for field in cls.__writable),
+                before_re=r"^\s+Usage:",
             )
         if cls.__readonly:
             _append_docstring_text(
                 cls,
                 "The following fields are read-only and cannot be modified:\n"
                 + ", ".join(f"``{field}``" for field in cls.__readonly),
+                before_re=r"^\s+Usage:",
             )
         super().__init_subclass__(**kwargs)
 
