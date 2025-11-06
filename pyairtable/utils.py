@@ -359,7 +359,7 @@ class Url(str):
     def __and__(self, params: Dict[str, Any]) -> Self:
         return self.add_qs(params)
 
-    def add_path(self, *others: Iterable[Any]) -> Self:
+    def add_path(self, *others: Any) -> Self:
         """
         Build a copy of this URL with additional path segments.
 
