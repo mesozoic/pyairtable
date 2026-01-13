@@ -613,6 +613,28 @@ class EnterpriseInfo(AirtableModel):
         workspace_ids: List[str] = _FL()
 
 
+class Package(AirtableModel):
+    """
+    Represents an enterprise package.
+
+    Returned from the `List packages <https://airtable.com/developers/web/api/list-enterprise-packages>`__ endpoint.
+    """
+
+    id: str
+    type: str
+    created_by_user_id: str
+    created_time: datetime
+    description: Optional[str] = None
+    enterprise_account_id: Optional[str] = None
+    install_count: int
+    last_updated_by_user_id: str
+    last_updated_time: datetime
+    latest_release_id: Optional[str] = None
+    name: str
+    source_application_id: str
+    tagline: Optional[str] = None
+
+
 class WorkspaceCollaborators(_Collaborators, url="meta/workspaces/{self.id}"):
     """
     Detailed information about who can access a workspace.

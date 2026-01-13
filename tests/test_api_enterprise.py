@@ -8,7 +8,7 @@ from pyairtable.api.enterprise import (
     Enterprise,
     ManageUsersResponse,
 )
-from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
+from pyairtable.models.schema import EnterpriseInfo, Package, UserGroup, UserInfo
 from pyairtable.testing import fake_id
 
 N_AUDIT_PAGES = 15
@@ -72,6 +72,12 @@ def enterprise_mocks(enterprise, requests_mock, sample_json):
     m.move_workspaces_json = {}
     m.move_workspaces = requests_mock.post(
         f"{enterprise_url}/moveWorkspaces", json=m.move_workspaces_json
+    )
+    m.json_package = sample_json("Package")
+    m.json_packages = {"packages": [m.json_package]}
+    m.get_packages = requests_mock.get(
+        f"{enterprise_url}/packages",
+        json=m.json_packages,
     )
     return m
 
@@ -494,3 +500,29 @@ def test_move_workspaces(api, enterprise, enterprise_mocks):
             "workspaceIds": workspace_ids,
         }
         assert set(m.id for m in result.moved_workspaces) == set(workspace_ids)
+
+
+def test_packages(enterprise, enterprise_mocks):
+    packages = enterprise.packages()
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(packages, list)
+    assert len(packages) == 1
+    assert isinstance(packages[0], Package)
+    assert packages[0].id == "pkggUqk9xHiC4BeeH"
+    assert packages[0].name == "New Enterprise Managed App 1"
+    assert packages[0].type == "appTemplate"
+    assert packages[0].install_count == 12
+    assert packages[0].latest_release_id == "pkrsTB7Ic2RhsA4pe"
+    for key in ("shouldgetallpackagesingrid", "shouldGetAllPackagesInGrid"):
+        assert key not in enterprise_mocks.get_packages.last_request.qs
+
+
+def test_packages__all_enterprises(enterprise, enterprise_mocks):
+    packages = enterprise.packages(all_enterprises=True)
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(packages, list)
+    assert len(packages) == 1
+    assert isinstance(packages[0], Package)
+    assert ["True"] == enterprise_mocks.get_packages.last_request.qs[
+        "shouldGetAllPackagesInGrid"
+    ]
