@@ -17,7 +17,13 @@ from typing_extensions import Self
 
 from pyairtable.models._base import AirtableModel, rebuild_models
 from pyairtable.models.audit import AuditLogResponse
-from pyairtable.models.schema import EnterpriseInfo, NestedId, UserGroup, UserInfo
+from pyairtable.models.schema import (
+    EnterpriseInfo,
+    NestedId,
+    Package,
+    UserGroup,
+    UserInfo,
+)
 from pyairtable.utils import (
     Url,
     UrlBuilder,
@@ -69,6 +75,9 @@ class Enterprise:
 
         #: URL for creating a new workspace.
         create_workspace = Url("meta/workspaces")
+
+        #: URL for listing enterprise packages.
+        packages = meta / "packages"
 
         def user(self, user_id: str) -> Url:
             """
@@ -538,6 +547,34 @@ class Enterprise:
             },
         )
         return self.api.workspace(str(response["id"]))
+
+    def packages(
+        self,
+        *,
+        all_enterprises: bool = False,
+    ) -> List[Package]:
+        """
+        List all packages for the enterprise account.
+
+        See `List packages <https://airtable.com/developers/web/api/list-enterprise-packages>`__.
+
+        Args:
+            all_enterprises: If True and the enterprise account is the root
+                enterprise account, returns all packages across the entire
+                enterprise grid. Defaults to False.
+
+        Returns:
+            A list of Package objects representing the enterprise packages.
+        """
+        params: Dict[str, Any] = {}
+        if all_enterprises:
+            params["shouldGetAllPackagesInGrid"] = True
+
+        response = self.api.get(self.urls.packages, params=params)
+        return [
+            Package.from_api(pkg, self.api, context=self)
+            for pkg in response.get("packages", [])
+        ]
 
 
 class UserRemoved(AirtableModel):
