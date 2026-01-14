@@ -31,6 +31,7 @@ from pyairtable.api.types import (
     UpdateRecordDict,
     WritableFields,
 )
+from pyairtable.exceptions import MissingRecordError
 from pyairtable.formulas import EQ, OR, RECORD_ID
 from pyairtable.models import Comment
 from pyairtable.orm.fields import AnyField, Field
@@ -466,7 +467,10 @@ class Model:
                 {obj.id: obj for obj in cls.all(formula=formula, memoize=memoize)}
             )
 
-        # Ensure we return records in the same order, and raise KeyError if any are missing
+        # Ensure we return records in the same order, and raise if any are missing
+        if missing_ids := set(record_ids) - set(by_id):
+            raise MissingRecordError(sorted(missing_ids))
+
         return [by_id[record_id] for record_id in record_ids]
 
     @classmethod
