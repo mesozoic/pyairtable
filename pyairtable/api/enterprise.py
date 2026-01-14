@@ -9,12 +9,14 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
     Union,
 )
 
 import pydantic
 from typing_extensions import Self
 
+from pyairtable.exceptions import InvalidParameterError, MissingRecordError
 from pyairtable.models._base import AirtableModel, rebuild_models
 from pyairtable.models.audit import AuditLogResponse
 from pyairtable.models.schema import (
@@ -35,6 +37,7 @@ from pyairtable.utils import (
 
 if TYPE_CHECKING:
     from pyairtable.api.api import Api
+    from pyairtable.api.base import Base
     from pyairtable.api.workspace import Workspace
 
 
@@ -79,6 +82,12 @@ class Enterprise:
         #: URL for listing enterprise packages.
         packages = meta / "packages"
 
+        def package_install(self, package_id: str) -> Url:
+            """
+            URL for installing a package (creating a base from a package).
+            """
+            return self.meta / "packages" / package_id / "install"
+
         def user(self, user_id: str) -> Url:
             """
             URL for retrieving information about a single user.
@@ -111,9 +120,9 @@ class Enterprise:
 
     urls = cached_property(_urls)
 
-    def __init__(self, api: "Api", workspace_id: str):
+    def __init__(self, api: "Api", enterprise_id: str):
         self.api = api
-        self.id = workspace_id
+        self.id = enterprise_id
         self._info: Optional[EnterpriseInfo] = None
 
     @cache_unless_forced
@@ -575,6 +584,97 @@ class Enterprise:
             Package.from_api(pkg, self.api, context=self)
             for pkg in response.get("packages", [])
         ]
+
+    def package(self, package_id: str) -> Package:
+        """
+        Retrieve information about a single package by ID.
+
+        Args:
+            package_id: The ID of the package to retrieve.
+
+        Returns:
+            A Package object representing the enterprise package.
+        """
+        try:
+            return next(
+                package
+                for package in iter(self.packages(all_enterprises=True))
+                if package.id == package_id
+            )
+        except StopIteration:
+            raise MissingRecordError(package_id)
+
+    def create_base(
+        self,
+        workspace: Union[str, "Workspace"],
+        name: str,
+        tables: Sequence[Dict[str, Any]],
+    ) -> "Base":
+        """
+        Create a base in the given workspace.
+
+        See https://airtable.com/developers/web/api/create-base
+
+        Args:
+            workspace: The ID of the workspace or a :class:`~pyairtable.Workspace` object.
+            name: The name to give to the new base. Does not need to be unique.
+            tables: A list of ``dict`` objects that conform to Airtable's
+                `Table model <https://airtable.com/developers/web/api/model/table-model>`__.
+        """
+        if isinstance(workspace, str):
+            workspace = self.api.workspace(workspace)
+        return workspace.create_base(name, tables)
+
+    def create_base_from_package(
+        self,
+        workspace: Union[str, "Workspace"],
+        name: str,
+        package: Union[str, Package],
+        *,
+        description: Optional[str] = None,
+        release_id: Optional[str] = None,
+    ) -> "Base":
+        """
+        Create a base from an enterprise package template in the specified workspace.
+
+        See https://airtable.com/developers/web/api/create-base-from-package-enterprise
+
+        Args:
+            workspace: The ID of the workspace or a :class:`~pyairtable.Workspace` object.
+            name: The name for the new base.
+            package: Package ID (str) or Package object to install.
+            description: Optional description for the base.
+            release_id: The package release ID to install. If not provided,
+                attempts to use ``Package.latest_release_id`` if package is a Package object,
+                or calls the :meth:`Enterprise.packages` method to find it.
+
+        Returns:
+            The newly created Base object.
+
+        Raises:
+            MissingRecordError: If the specified package ID does not exist.
+            InvalidParameterError: If release_id cannot be determined.
+        """
+        workspace_id = workspace if isinstance(workspace, str) else workspace.id
+        package_id = package if isinstance(package, str) else package.id
+
+        # Only fetch the list of packages if we need to get the latest release ID
+        if release_id is None:
+            package = self.package(package_id) if isinstance(package, str) else package
+            release_id = package.latest_release_id
+        if release_id is None:
+            raise InvalidParameterError("release_id is required")
+
+        payload: Dict[str, Any] = {
+            "name": name,
+            "packageReleaseId": release_id,
+            "workspaceId": workspace_id,
+        }
+        if description is not None:
+            payload["description"] = description
+
+        response = self.api.post(self.urls.package_install(package_id), json=payload)
+        return self.api.base(response["id"], validate=True, force=True)
 
 
 class UserRemoved(AirtableModel):

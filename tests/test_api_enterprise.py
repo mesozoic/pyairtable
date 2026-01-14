@@ -3,11 +3,13 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from pyairtable.api.base import Base
 from pyairtable.api.enterprise import (
     DeleteUsersResponse,
     Enterprise,
     ManageUsersResponse,
 )
+from pyairtable.exceptions import InvalidParameterError, MissingRecordError
 from pyairtable.models.schema import EnterpriseInfo, Package, UserGroup, UserInfo
 from pyairtable.testing import fake_id
 
@@ -526,3 +528,104 @@ def test_packages__all_enterprises(enterprise, enterprise_mocks):
     assert ["True"] == enterprise_mocks.get_packages.last_request.qs[
         "shouldGetAllPackagesInGrid"
     ]
+
+
+def test_package(enterprise, enterprise_mocks):
+    package = enterprise.package("pkggUqk9xHiC4BeeH")
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(package, Package)
+    assert package.id == "pkggUqk9xHiC4BeeH"
+    assert package.name == "New Enterprise Managed App 1"
+
+
+def test_package__not_found(enterprise, enterprise_mocks):
+    with pytest.raises(MissingRecordError):
+        enterprise.package(fake_id("pkg"))
+
+
+def test_create_base_from_package__with_package_object(
+    api, base_id, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package = Package.from_api(sample_json("Package"), api)
+
+    url = enterprise.urls.package_install(package.id)
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(url, json={"id": base_id})
+
+    base = enterprise.create_base_from_package(
+        workspace_id, "My New Base", package, description="Test base"
+    )
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "packageReleaseId": package.latest_release_id,
+        "workspaceId": workspace_id,
+        "description": "Test base",
+    }
+
+
+def test_create_base_from_package__with_package_id(
+    api, base_id, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package_id = fake_id("pkg")
+    release_id = fake_id("pkr")
+
+    url = enterprise.urls.package_install(package_id)
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(url, json={"id": base_id})
+
+    base = enterprise.create_base_from_package(
+        workspace_id, "My New Base", package_id, release_id=release_id
+    )
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "packageReleaseId": release_id,
+        "workspaceId": workspace_id,
+    }
+
+
+def test_create_base_from_package__no_package_release_id(
+    api, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package_id = fake_id("pkg")
+
+    # Mock a package response where latestReleaseId is null
+    package_json = sample_json("Package")
+    package_json["id"] = package_id
+    package_json["latestReleaseId"] = None
+    requests_mock.get(enterprise.urls.packages, json={"packages": [package_json]})
+
+    with pytest.raises(InvalidParameterError, match="release_id is required"):
+        enterprise.create_base_from_package(workspace_id, "My New Base", package_id)
+
+
+def test_create_base(api, base_id, workspace_id, requests_mock, sample_json):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(api.urls.bases, json={"id": base_id})
+
+    base = enterprise.create_base(workspace_id, "My New Base", [{"name": "Table1"}])
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "workspaceId": workspace_id,
+        "tables": [{"name": "Table1"}],
+    }

@@ -16,6 +16,12 @@ class InvalidParameterError(PyAirtableError, ValueError):
     """
 
 
+class MissingRecordError(PyAirtableError, KeyError):
+    """
+    A requested record was not found in Airtable.
+    """
+
+
 class MissingValueError(PyAirtableError, ValueError):
     """
     A required field received an empty value, either from Airtable or other code.
