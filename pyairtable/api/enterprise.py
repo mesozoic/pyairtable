@@ -557,6 +557,7 @@ class Enterprise:
         )
         return self.api.workspace(str(response["id"]))
 
+    @cache_unless_forced
     def packages(
         self,
         *,
@@ -585,12 +586,13 @@ class Enterprise:
             for pkg in response.get("packages", [])
         ]
 
-    def package(self, package_id: str) -> Package:
+    def package(self, package_id: str, *, force: bool = False) -> Package:
         """
         Retrieve information about a single package by ID.
 
         Args:
             package_id: The ID of the package to retrieve.
+            force: If ``True``, forces a refresh of the cached package list.
 
         Returns:
             A Package object representing the enterprise package.
@@ -598,7 +600,7 @@ class Enterprise:
         try:
             return next(
                 package
-                for package in iter(self.packages(all_enterprises=True))
+                for package in self.packages(force=force)
                 if package.id == package_id
             )
         except StopIteration:
