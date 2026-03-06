@@ -233,7 +233,7 @@ See :ref:`Migrating from 1.x to 2.0` for detailed migration notes.
   - `PR #277 <https://github.com/gtalarico/pyairtable/pull/277>`_
 * Added :meth:`Model.batch_save <pyairtable.orm.Model.batch_save>`
   and :meth:`Model.batch_delete <pyairtable.orm.Model.batch_delete>`.
-  - `PR #274 <https://github.com/gtalarico/pyairtable/pull/277>`_
+  - `PR #274 <https://github.com/gtalarico/pyairtable/pull/274>`_
 * Added :meth:`Api.whoami <pyairtable.Api.whoami>` method.
   - `PR #273 <https://github.com/gtalarico/pyairtable/pull/273>`_
 * pyAirtable will automatically retry requests when throttled by Airtable's QPS.
