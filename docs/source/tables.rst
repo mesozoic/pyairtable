@@ -126,21 +126,21 @@ This library will return records as :class:`~pyairtable.api.types.RecordDict`.
   [
       {
           'id': 'recwPQIfs4wKPyc9D',
-          'createdTime': '2017-03-14T22:04:31.000Z'
+          'createdTime': '2017-03-14T22:04:31.000Z',
           'fields': {
               'Name': 'Alice',
           },
       },
       {
           'id': 'rechOLltN9SpPHq5o',
-          'createdTime': '2017-03-20T15:21:50.000Z'
+          'createdTime': '2017-03-20T15:21:50.000Z',
           'fields': {
               'Name': 'Bob',
           },
       },
       {
           'id': 'rec5eR7IzKSAOBHCz',
-          'createdTime': '2017-08-05T21:47:52.000Z'
+          'createdTime': '2017-08-05T21:47:52.000Z',
           'fields': {
               'Name': 'Carol',
           },

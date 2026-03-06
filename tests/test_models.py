@@ -233,9 +233,9 @@ def test_writable_and_readonly(create_instance):
         create_instance(writable=["foo"], readonly=["bar"])
 
 
-def test_update_forward_refs():
+def test_rebuild_models():
     """
-    Test that update_forward_refs does not get caught in an infinite loop.
+    Test that rebuild_models does not get caught in an infinite loop.
     """
 
     class Outer(AirtableModel):

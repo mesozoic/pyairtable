@@ -4,7 +4,7 @@ About
 
 Questions
 *********
-Post them over in the project's `Github Page <http://www.github.com/gtalarico/pyairtable>`_
+Post them over in the project's `Github Page <https://github.com/gtalarico/pyairtable>`_
 
 _______________________________________________
 
@@ -18,7 +18,7 @@ Contribute
    # Create Virtual Environment
    python3 -m venv .venv
    source .venv/bin/activate
-   make setup # Sets up githooks and install package and depedencies
+   make setup # Sets up githooks and install package and dependencies
    make test # run test complete suite
    # Optional, use as needed
    make lint # lints locally - also done in pre-merge CI

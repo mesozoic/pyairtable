@@ -585,10 +585,10 @@ configured to memoize by default, pass ``memoize=False`` to override it.
      - Never
    * - :meth:`Model.from_id <pyairtable.orm.Model.from_id>`
      - Yes
-     - Yes, unless ``fetch=True``
+     - Yes, unless ``fetch=False``
    * - :meth:`Model.from_ids <pyairtable.orm.Model.from_ids>`
      - Yes
-     - Yes, unless ``fetch=True``
+     - Yes, unless ``fetch=False``
    * - :meth:`LinkField.populate <pyairtable.orm.fields.LinkField.populate>`
      - Yes
      - Yes, unless ``lazy=True``
