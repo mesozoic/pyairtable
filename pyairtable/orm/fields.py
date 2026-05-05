@@ -722,7 +722,7 @@ class _ListFieldBase(
             assert isinstance(self.list_class, type)
             assert issubclass(self.list_class, ChangeTrackingList)
             value = self.list_class(value, field=self, model=instance)
-        super().__set__(instance, value)
+        super().__set__(instance, cast(Optional[List[T_ORM]], value))
 
     def _get_list_value(self, instance: "Model") -> T_ORM_List:
         value = instance._fields.get(self.field_name)

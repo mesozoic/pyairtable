@@ -25,6 +25,6 @@ black
 flake8
 
 # Type checking
-mypy
+mypy>=1.20
 types-requests
 types-urllib3
