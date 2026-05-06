@@ -27,6 +27,12 @@ The :class:`~pyairtable.orm.Model` class allows you create ORM-style classes for
             table_name = "Contact"
             api_key = "keyapikey"
 
+To get started faster, you may want to generate models that reflect the current state of your base.
+See the :ref:`base orm` command in the CLI to learn more.
+
+
+Working with Records
+--------------------
 
 Once you have a model, you can query for existing records using the
 ``first()`` and ``all()`` methods, which take the same arguments as
