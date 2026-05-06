@@ -73,6 +73,9 @@ class Comment(
     #: List of reactions to this comment.
     reactions: List["Reaction"] = pydantic.Field(default_factory=list)
 
+    #: List of attachments on this comment.
+    attachments: List["Attachment"] = pydantic.Field(default_factory=list)
+
 
 class Mentioned(AirtableModel):
     """
@@ -121,6 +124,34 @@ class Reaction(AirtableModel):
         The emoji character used for the reaction.
         """
         return chr(int(self.emoji_info.unicode_character, 16))
+
+
+class Attachment(AirtableModel):
+    """
+    An attachment on a comment. URLs returned will expire 2 hours after being
+    returned from the API.
+
+    See `List comments <https://airtable.com/developers/web/api/list-comments>`_.
+    """
+
+    class Thumbnails(AirtableModel):
+        class Thumbnail(AirtableModel):
+            url: str
+            height: Optional[int] = None
+            width: Optional[int] = None
+
+        full: Optional[Thumbnail] = None
+        large: Optional[Thumbnail] = None
+        small: Optional[Thumbnail] = None
+
+    id: str
+    url: str
+    filename: str
+    type: Optional[str] = None
+    size: Optional[int] = None
+    height: Optional[int] = None
+    width: Optional[int] = None
+    thumbnails: Optional[Thumbnails] = None
 
 
 rebuild_models(vars())

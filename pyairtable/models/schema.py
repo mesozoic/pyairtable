@@ -242,6 +242,7 @@ class BaseCollaborators(_Collaborators, url="meta/bases/{base.id}"):
     individual_collaborators: "BaseCollaborators.IndividualCollaborators" = _F("BaseCollaborators.IndividualCollaborators")  # fmt: skip
     invite_links: "BaseCollaborators.InviteLinks" = _F("BaseCollaborators.InviteLinks")  # fmt: skip
     sensitivity_label: Optional["BaseCollaborators.SensitivityLabel"] = None
+    package_installations: List["BaseCollaborators.PackageInstallation"] = _FL()
 
     class InterfaceCollaborators(
         _Collaborators,
@@ -271,6 +272,12 @@ class BaseCollaborators(_Collaborators, url="meta/bases/{base.id}"):
         id: str
         description: str
         name: str
+
+    class PackageInstallation(AirtableModel):
+        id: str
+        package_id: str
+        package_release_id: Optional[str] = None
+        installation_type: str
 
 
 class BaseShares(AirtableModel):
@@ -489,6 +496,7 @@ class TableSchema(
         rescheduling_mode: str
         should_skip_weekends_and_holidays: bool
         holidays: List[str] = _FL()
+        is_forward_only: Optional[bool] = None
 
 
 class ViewSchema(CanDeleteModel, url="meta/bases/{base.id}/views/{self.id}"):

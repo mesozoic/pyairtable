@@ -31,6 +31,12 @@ def test_parse(comment):
     assert comment.author.id == "usrLkNDICXNqxSDhG"
     assert comment.mentioned["usr00000mentioned"].display_name == "Alice Doe"
     assert comment.reactions[0].emoji == "👍"
+    assert comment.attachments[0].id == "attLkNDICXNqxSDhG"
+    assert comment.attachments[0].filename == "cat.png"
+    assert (
+        comment.attachments[0].thumbnails.small.url
+        == "https://example.com/cat-small.png"
+    )
 
 
 def test_missing_attributes(comment_json):
