@@ -58,7 +58,7 @@
 
 .. |kwarg_replace| replace:: If ``True``, record is replaced in its entirety
     by provided fields; if a field is not included its value will
-    bet set to null. If ``False``, only provided fields are updated.
+    be set to null. If ``False``, only provided fields are updated.
 
 .. |kwarg_use_field_ids| replace:: An optional boolean value that lets you return field objects where the
     key is the field id. This defaults to ``False``, which returns field objects where the key is the field name.

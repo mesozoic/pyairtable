@@ -317,12 +317,12 @@ def rebuild_models(
 
     Only intended for use within pyAirtable, like:
 
-        >>> from pyairtable.models._base import AirtableModel, update_forward_refs
+        >>> from pyairtable.models._base import AirtableModel, rebuild_models
         >>> class A(AirtableModel): ...
         >>> class B(AirtableModel): ...
         ...     class B_One(AirtableModel): ...
         ...     class B_Two(AirtableModel): ...
-        >>> update_forward_refs(vars())
+        >>> rebuild_models(vars())
     """
     memo = set() if memo is None else memo
     # If it's a type, update its refs, then do the same for any nested classes.
