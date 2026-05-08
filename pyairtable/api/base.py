@@ -3,6 +3,7 @@ from functools import cached_property
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Union
 
 import pyairtable.api.table
+from pyairtable.exceptions import MissingRecordError
 from pyairtable.models.schema import BaseCollaborators, BaseSchema, BaseShares
 from pyairtable.models.webhook import (
     CreateWebhook,
@@ -241,7 +242,7 @@ class Base:
 
     def webhook(self, webhook_id: str) -> Webhook:
         """
-        Build a single webhook or raises ``KeyError`` if the given ID is invalid.
+        Build a single webhook or raises ``MissingRecordError`` if the given ID is invalid.
 
         Airtable's API does not permit retrieving a single webhook, so this function
         will call :meth:`~webhooks` and simply return one item from the list.
@@ -249,7 +250,7 @@ class Base:
         for webhook in self.webhooks():
             if webhook.id == webhook_id:
                 return webhook
-        raise KeyError(f"webhook not found: {webhook_id!r}")
+        raise MissingRecordError(webhook_id)
 
     def add_webhook(
         self,

@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 from requests_mock import Mocker
 
+from pyairtable.exceptions import MissingRecordError
 from pyairtable.orm import Model
 from pyairtable.orm import fields as f
 from pyairtable.orm.model import SaveResult
@@ -250,8 +251,8 @@ def test_from_ids(mock_api):
 
 @mock.patch("pyairtable.Table.all")
 def test_from_ids__invalid_id(mock_all):
-    # Should raise KeyError because of the invalid ID
-    with pytest.raises(KeyError):
+    # Should raise MissingRecordError because of the invalid ID
+    with pytest.raises(MissingRecordError):
         FakeModel.from_ids(["recDefinitelyNotValid"])
     mock_all.assert_called_once()
 

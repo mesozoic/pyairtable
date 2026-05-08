@@ -3,12 +3,14 @@ from unittest.mock import Mock, call, patch
 
 import pytest
 
+from pyairtable.api.base import Base
 from pyairtable.api.enterprise import (
     DeleteUsersResponse,
     Enterprise,
     ManageUsersResponse,
 )
-from pyairtable.models.schema import EnterpriseInfo, UserGroup, UserInfo
+from pyairtable.exceptions import InvalidParameterError, MissingRecordError
+from pyairtable.models.schema import EnterpriseInfo, Package, UserGroup, UserInfo
 from pyairtable.testing import fake_id
 
 N_AUDIT_PAGES = 15
@@ -72,6 +74,12 @@ def enterprise_mocks(enterprise, requests_mock, sample_json):
     m.move_workspaces_json = {}
     m.move_workspaces = requests_mock.post(
         f"{enterprise_url}/moveWorkspaces", json=m.move_workspaces_json
+    )
+    m.json_package = sample_json("Package")
+    m.json_packages = {"packages": [m.json_package]}
+    m.get_packages = requests_mock.get(
+        f"{enterprise_url}/packages",
+        json=m.json_packages,
     )
     return m
 
@@ -494,3 +502,130 @@ def test_move_workspaces(api, enterprise, enterprise_mocks):
             "workspaceIds": workspace_ids,
         }
         assert set(m.id for m in result.moved_workspaces) == set(workspace_ids)
+
+
+def test_packages(enterprise, enterprise_mocks):
+    packages = enterprise.packages()
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(packages, list)
+    assert len(packages) == 1
+    assert isinstance(packages[0], Package)
+    assert packages[0].id == "pkggUqk9xHiC4BeeH"
+    assert packages[0].name == "New Enterprise Managed App 1"
+    assert packages[0].type == "appTemplate"
+    assert packages[0].install_count == 12
+    assert packages[0].latest_release_id == "pkrsTB7Ic2RhsA4pe"
+    for key in ("shouldgetallpackagesingrid", "shouldGetAllPackagesInGrid"):
+        assert key not in enterprise_mocks.get_packages.last_request.qs
+
+
+def test_packages__all_enterprises(enterprise, enterprise_mocks):
+    packages = enterprise.packages(all_enterprises=True)
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(packages, list)
+    assert len(packages) == 1
+    assert isinstance(packages[0], Package)
+    assert ["True"] == enterprise_mocks.get_packages.last_request.qs[
+        "shouldGetAllPackagesInGrid"
+    ]
+
+
+def test_package(enterprise, enterprise_mocks):
+    package = enterprise.package("pkggUqk9xHiC4BeeH")
+    assert enterprise_mocks.get_packages.call_count == 1
+    assert isinstance(package, Package)
+    assert package.id == "pkggUqk9xHiC4BeeH"
+    assert package.name == "New Enterprise Managed App 1"
+
+
+def test_package__not_found(enterprise, enterprise_mocks):
+    with pytest.raises(MissingRecordError):
+        enterprise.package(fake_id("pkg"))
+
+
+def test_create_base_from_package__with_package_object(
+    api, base_id, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package = Package.from_api(sample_json("Package"), api)
+
+    url = enterprise.urls.package_install(package.id)
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(url, json={"id": base_id})
+
+    base = enterprise.create_base_from_package(
+        workspace_id, "My New Base", package, description="Test base"
+    )
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "packageReleaseId": package.latest_release_id,
+        "workspaceId": workspace_id,
+        "description": "Test base",
+    }
+
+
+def test_create_base_from_package__with_package_id(
+    api, base_id, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package_id = fake_id("pkg")
+    release_id = fake_id("pkr")
+
+    url = enterprise.urls.package_install(package_id)
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(url, json={"id": base_id})
+
+    base = enterprise.create_base_from_package(
+        workspace_id, "My New Base", package_id, release_id=release_id
+    )
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "packageReleaseId": release_id,
+        "workspaceId": workspace_id,
+    }
+
+
+def test_create_base_from_package__no_package_release_id(
+    api, workspace_id, requests_mock, sample_json
+):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+    package_id = fake_id("pkg")
+
+    # Mock a package response where latestReleaseId is null
+    package_json = sample_json("Package")
+    package_json["id"] = package_id
+    package_json["latestReleaseId"] = None
+    requests_mock.get(enterprise.urls.packages, json={"packages": [package_json]})
+
+    with pytest.raises(InvalidParameterError, match="release_id is required"):
+        enterprise.create_base_from_package(workspace_id, "My New Base", package_id)
+
+
+def test_create_base(api, base_id, workspace_id, requests_mock, sample_json):
+    enterprise_id = fake_id("ent")
+    enterprise = api.enterprise(enterprise_id)
+
+    requests_mock.get(api.urls.bases, json=sample_json("Bases"))
+    m = requests_mock.post(api.urls.bases, json={"id": base_id})
+
+    base = enterprise.create_base(workspace_id, "My New Base", [{"name": "Table1"}])
+
+    assert isinstance(base, Base)
+    assert base.id == base_id
+    assert m.call_count == 1
+    assert m.last_request.json() == {
+        "name": "My New Base",
+        "workspaceId": workspace_id,
+        "tables": [{"name": "Table1"}],
+    }
