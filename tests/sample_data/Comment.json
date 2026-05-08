@@ -24,5 +24,21 @@
                 "email": "carol@example.com"
             }
         }
+    ],
+    "attachments": [
+        {
+            "id": "attLkNDICXNqxSDhG",
+            "url": "https://example.com/cat.png",
+            "filename": "cat.png",
+            "type": "image/png",
+            "size": 12345,
+            "height": 600,
+            "width": 800,
+            "thumbnails": {
+                "small": {"url": "https://example.com/cat-small.png", "width": 36, "height": 27},
+                "large": {"url": "https://example.com/cat-large.png", "width": 512, "height": 384},
+                "full": {"url": "https://example.com/cat-full.png", "width": 800, "height": 600}
+            }
+        }
     ]
 }

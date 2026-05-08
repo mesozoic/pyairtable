@@ -125,6 +125,20 @@
     ]
   },
   "name": "my first base",
+  "packageInstallations": [
+    {
+      "id": "pkiLkNDICXNqxSDhG",
+      "packageId": "pkgLkNDICXNqxSDhG",
+      "packageReleaseId": "prlLkNDICXNqxSDhG",
+      "installationType": "application"
+    },
+    {
+      "id": "pkiR8ZT9KtIgp8Bh3",
+      "packageId": "pkgR8ZT9KtIgp8Bh3",
+      "packageReleaseId": null,
+      "installationType": "component"
+    }
+  ],
   "permissionLevel": "none",
   "workspaceId": "wspmhESAta6clCCwF"
 }

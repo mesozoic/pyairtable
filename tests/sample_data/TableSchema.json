@@ -36,5 +36,16 @@
       "name": "Grid view",
       "type": "grid"
     }
-  ]
+  ],
+  "dateDependencySettings": {
+    "isEnabled": true,
+    "startDateFieldId": "fldStartDate00000",
+    "endDateFieldId": "fldEndDate0000000",
+    "durationFieldId": "fldDuration000000",
+    "predecessorFieldId": null,
+    "reschedulingMode": "flexible",
+    "shouldSkipWeekendsAndHolidays": true,
+    "holidays": ["2026-01-01"],
+    "isForwardOnly": true
+  }
 }
