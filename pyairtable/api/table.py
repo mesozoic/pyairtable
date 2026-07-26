@@ -3,19 +3,10 @@ import mimetypes
 import os
 import urllib.parse
 import warnings
+from collections.abc import Iterable, Iterator
 from functools import cached_property
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Dict,
-    Iterable,
-    Iterator,
-    List,
-    Optional,
-    Union,
-    overload,
-)
+from typing import TYPE_CHECKING, Any, overload
 
 import pyairtable.models
 from pyairtable.api.types import (
@@ -57,7 +48,7 @@ class Table:
     name: str
 
     # Cached schema information to reduce API calls
-    _schema: Optional[TableSchema] = None
+    _schema: TableSchema | None = None
 
     class _urls(UrlBuilder):
         #: URL for retrieving all records in the table
@@ -96,8 +87,8 @@ class Table:
         base_id: str,
         table_name: str,
         *,
-        timeout: Optional["TimeoutTuple"] = None,
-        retry_strategy: Optional["Retry"] = None,
+        timeout: "TimeoutTuple | None" = None,
+        retry_strategy: "Retry | None" = None,
         endpoint_url: str = "https://api.airtable.com",
     ): ...
 
@@ -119,9 +110,9 @@ class Table:
 
     def __init__(
         self,
-        api_key: Union[None, str],
-        base_id: Union["Base", str],
-        table_name: Union[str, TableSchema],
+        api_key: str | None,
+        base_id: "Base | str",
+        table_name: str | TableSchema,
         **kwargs: Any,
     ):
         """
@@ -251,7 +242,7 @@ class Table:
         record = self.api.get(self.urls.record(record_id), options=options)
         return assert_typed_dict(RecordDict, record)
 
-    def iterate(self, **options: Any) -> Iterator[List[RecordDict]]:
+    def iterate(self, **options: Any) -> Iterator[list[RecordDict]]:
         """
         Iterate through each page of results from `List records <https://airtable.com/developers/web/api/list-records>`_.
         To get all records at once, use :meth:`all`.
@@ -292,7 +283,7 @@ class Table:
         ):
             yield assert_typed_dicts(RecordDict, page.get("records", []))
 
-    def all(self, **options: Any) -> List[RecordDict]:
+    def all(self, **options: Any) -> list[RecordDict]:
         """
         Retrieve all matching records in a single list.
 
@@ -317,7 +308,7 @@ class Table:
         """
         return [record for page in self.iterate(**options) for record in page]
 
-    def first(self, **options: Any) -> Optional[RecordDict]:
+    def first(self, **options: Any) -> RecordDict | None:
         """
         Retrieve the first matching record.
         Returns ``None`` if no records are returned.
@@ -346,7 +337,7 @@ class Table:
         self,
         fields: WritableFields,
         typecast: bool = False,
-        use_field_ids: Optional[bool] = None,
+        use_field_ids: bool | None = None,
     ) -> RecordDict:
         """
         Create a new record
@@ -376,8 +367,8 @@ class Table:
         self,
         records: Iterable[WritableFields],
         typecast: bool = False,
-        use_field_ids: Optional[bool] = None,
-    ) -> List[RecordDict]:
+        use_field_ids: bool | None = None,
+    ) -> list[RecordDict]:
         """
         Create a number of new records in batches.
 
@@ -427,7 +418,7 @@ class Table:
         fields: WritableFields,
         replace: bool = False,
         typecast: bool = False,
-        use_field_ids: Optional[bool] = None,
+        use_field_ids: bool | None = None,
     ) -> RecordDict:
         """
         Update a particular record ID with the given fields.
@@ -463,8 +454,8 @@ class Table:
         records: Iterable[UpdateRecordDict],
         replace: bool = False,
         typecast: bool = False,
-        use_field_ids: Optional[bool] = None,
-    ) -> List[RecordDict]:
+        use_field_ids: bool | None = None,
+    ) -> list[RecordDict]:
         """
         Update several records in batches.
 
@@ -502,11 +493,11 @@ class Table:
 
     def batch_upsert(
         self,
-        records: Iterable[Dict[str, Any]],
-        key_fields: List[FieldName],
+        records: Iterable[dict[str, Any]],
+        key_fields: list[FieldName],
         replace: bool = False,
         typecast: bool = False,
-        use_field_ids: Optional[bool] = None,
+        use_field_ids: bool | None = None,
     ) -> UpsertResultDict:
         """
         Update or create records in batches, either using ``id`` (if given) or using a set of
@@ -591,7 +582,7 @@ class Table:
             self.api.delete(self.urls.record(record_id)),
         )
 
-    def batch_delete(self, record_ids: Iterable[RecordId]) -> List[RecordDeletedDict]:
+    def batch_delete(self, record_ids: Iterable[RecordId]) -> list[RecordDeletedDict]:
         """
         Delete the given records, operating in batches.
 
@@ -618,7 +609,7 @@ class Table:
 
         return deleted_records
 
-    def comments(self, record_id: RecordId) -> List["pyairtable.models.Comment"]:
+    def comments(self, record_id: RecordId) -> list["pyairtable.models.Comment"]:
         """
         Retrieve all comments on the given record.
 
@@ -709,8 +700,8 @@ class Table:
         self,
         name: str,
         field_type: str,
-        description: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None,
+        description: str | None = None,
+        options: dict[str, Any] | None = None,
     ) -> FieldSchema:
         """
         Create a field on the table.
@@ -732,7 +723,7 @@ class Table:
             options: Only available for some field types. For more information, read about the
                 `Airtable field model <https://airtable.com/developers/web/api/field-model>`__.
         """
-        request: Dict[str, Any] = {"name": name, "type": field_type}
+        request: dict[str, Any] = {"name": name, "type": field_type}
         if description:
             request["description"] = description
         if options:
@@ -756,9 +747,9 @@ class Table:
         self,
         record_id: RecordId,
         field: str,
-        filename: Union[str, Path],
-        content: Optional[Union[str, bytes]] = None,
-        content_type: Optional[str] = None,
+        filename: str | Path,
+        content: str | bytes | None = None,
+        content_type: str | None = None,
     ) -> UploadAttachmentResultDict:
         """
         Upload an attachment to the Airtable API, either by supplying the path to the file
