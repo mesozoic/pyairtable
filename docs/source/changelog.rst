@@ -2,10 +2,12 @@
 Changelog
 =========
 
-3.5.1 (unreleased)
+3.6.0 (unreleased)
 ------------------------
 
-* Bumped the minimum supported version of requests to 2.25.0.
+* Dropped support for Python 3.10 and added support for Python 3.15,
+  which now requires pydantic 2.14.0 or later.
+* Minimum supported version of requests is now 2.25.0.
 
 3.5.0.post1 (2026-09-24)
 ------------------------
